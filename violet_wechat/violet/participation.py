@@ -95,4 +95,4 @@ class ConversationPolicy:
     def eligible(self,group,messages,settings,self_id='',names=()):
         return [m for m in messages if textual(m) and not LOCAL_SILENCE.search(m['text'])
                 and not quiet_request(m,settings,group,self_id,names)
-                and not addressed_elsewhere(m,settings,group,self_id,names,include_quote=group.chat_style!='classmates')]
+                and (group.is_private or not addressed_elsewhere(m,settings,group,self_id,names,include_quote=group.chat_style!='classmates'))]

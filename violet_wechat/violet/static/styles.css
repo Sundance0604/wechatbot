@@ -11,3 +11,6 @@
 .conversation-state{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--line);margin-top:12px}.conversation-state>div{display:flex;flex-direction:column;align-items:flex-start;gap:7px}.conversation-state small,.conversation-note{font-size:10px;color:#ac95bd;line-height:1.8}.conversation-settings{border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:20px}.conversation-settings summary{cursor:pointer;font-size:11px;color:#9675af}.conversation-note{margin:12px 0}.conversation-settings .field{margin-top:12px}.conversation-state .btn{white-space:nowrap}.conversation-settings .form-grid{gap:12px}
 
 #owner-profile{font-family:Consolas,"Microsoft YaHei",monospace;font-size:12px;line-height:1.9}
+
+/* Conversation cards must fit narrow screens, including long contact names and role options. */
+.group-card{min-width:0}.group-top>div:nth-child(2){min-width:0}.group-top p{overflow-wrap:anywhere}.group-card select{min-width:0;max-width:100%}.conversation-state{flex-wrap:wrap}.conversation-state>div{min-width:0;flex:1 1 140px}@media(max-width:850px){.group-grid{grid-template-columns:minmax(0,1fr)}}

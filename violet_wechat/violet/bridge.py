@@ -75,12 +75,15 @@ class Bridge:
                     def parse(row):
                         row = dict(row)
                         sender = identities.get(row.get('real_sender_id'),'')
+                        private = not group.endswith('@chatroom')
+                        if private and sender not in {self.self_id,group}:
+                            raise RuntimeError('无法核验私聊消息的真实发送者，已停止处理。')
                         reference = quoted_reply(decode_payload(row.get('message_content')) or decode_payload(row.get('compress_content')))
                         return {'group':group,'shard':str(rel),'local_id':row['local_id'],'create_time':row['create_time'],
                                 'sort_seq':row.get('sort_seq',0),'sender':sender,'speaker':self.names.get(sender,'群友'),
                                 'is_self':sender==self.self_id,'type':'引用回复' if reference else type_label(row['local_type']),
                                 'reply_to':reference,
-                                'text':reference['text'] if reference else clean_group_content(row,self.names,group)[:8000],
+                                'text':reference['text'] if reference else clean_group_content(row,self.names,group,strip_sender_prefix=not private)[:8000],
                                 'server_id':row.get('server_id'),'status':row.get('status')}
                     fresh.extend(parse(row) for row in conn.execute(f'SELECT * FROM "{table}" WHERE local_id>? ORDER BY local_id LIMIT 300',(cursors.get(str(rel),0),)))
                     context.extend(parse(row) for row in conn.execute(f'SELECT * FROM "{table}" ORDER BY local_id DESC LIMIT ?', (context_limit,)))

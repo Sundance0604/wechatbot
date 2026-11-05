@@ -18,8 +18,19 @@ FAMILY_PERSONA = ('这是账号主人的家族群。亲切、自然、简洁，�
                   '尊重长辈，不使用同学群互损、阴阳怪气或国/匪黑话；不替主人作私人承诺。')
 
 
+PRIVATE_PERSONA = ('你是账号主人的AI助手，正在与一位联系人私聊。自然、友好地回应对方，保持AI身份，不冒充账号主人。'
+                   '不带入其他会话的私密背景，不替主人承诺；简短追问按当前对话继续。')
+SERVICE_CONTACTS = {'filehelper','weixin','fmessage','newsapp','medianote','qqmail','tmessage','qmessage',
+                    'floatbottle','shakeapp','lbsapp','feedsapp','meishiapp','voip','notifymessage','brandsessionholder'}
+
+
+def is_person_id(identifier):
+    return bool(identifier and not identifier.endswith('@chatroom') and not identifier.startswith('gh_')
+                and identifier not in SERVICE_CONTACTS)
+
+
 def group_persona(settings,group):
-    return group.persona or (FAMILY_PERSONA if group.chat_style=='family' else settings.persona)
+    return group.persona or (PRIVATE_PERSONA if group.is_private else FAMILY_PERSONA if group.chat_style=='family' else settings.persona)
 
 
 class Strict(BaseModel):
@@ -27,7 +38,7 @@ class Strict(BaseModel):
 
 
 class Group(Strict):
-    id: str = Field(pattern=r'^\S{1,90}@chatroom$')
+    id: str = Field(pattern=r'^[A-Za-z0-9_][A-Za-z0-9_.@-]{0,99}$')
     name: str = Field(min_length=1,max_length=150)
     enabled: bool = True
     mode: Literal['active','mention'] = 'active'
@@ -43,6 +54,10 @@ class Group(Strict):
     quiet_seconds: int = Field(default=120,ge=10,le=3600)
     casual_max_chars: int = Field(default=80,ge=10,le=300)
     other_names: list[str] = Field(default_factory=list,max_length=100)
+
+    @property
+    def is_private(self):
+        return not self.id.endswith('@chatroom')
 
 
 class Workspace(Strict):
@@ -133,6 +148,6 @@ class ConfigStore:
         value = Settings.model_validate(data)
         value.validate_workspaces()
         if len({g.id for g in value.groups}) != len(value.groups):
-            raise ValueError('同一个群不能重复添加。')
+            raise ValueError('同一个会话不能重复添加。')
         self.save(value)
         return value

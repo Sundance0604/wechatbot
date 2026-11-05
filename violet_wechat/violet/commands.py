@@ -13,9 +13,9 @@ HELP = ('/command forward 30 -> ExampleContact\n'
         '/command forward 10 -> ["联系人A", "群名B"]\n'
         '/command send ["联系人A", "群名B"] | 正文\n'
         '/command status 任务编号\n/command cancel 任务编号\n'
-        '也支持：/command 把本群最近30条消息转给 ExampleContact\n'
+        '也支持：/command 把本会话最近30条消息转给 ExampleContact\n'
         '/command 给 ExampleContact 发消息，内容是：今晚八点见\n'
-        'forward 转发本群最近的消息为带时间、发言人的文字；图片、语音仅有类型标签。')
+        'forward 转发本会话最近的消息为带时间、发言人的文字；图片、语音仅有类型标签。')
 
 
 class NaturalCommand(Strict):
@@ -78,7 +78,7 @@ def parse(text):
     match=re.fullmatch(r'(?:forward|转发)\s+(\d+)\s*(?:->|→)\s*([\s\S]+)',body,re.I)
     if match:
         count=int(match[1])
-        if not 1<=count<=50:raise ValueError('一次可转发本群最近1–50条消息。')
+        if not 1<=count<=50:raise ValueError('一次可转发本会话最近1–50条消息。')
         return Command('forward',targets(match[2]),count=count)
     match=re.fullmatch(r'(?:send|发送)\s+([^|]+)\|([\s\S]+)',body,re.I)
     if match:

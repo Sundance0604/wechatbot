@@ -227,7 +227,8 @@ def summarize_red_packet(text):
 def clean_group_content(
     row,
     known_ids,
-    group_wxid
+    group_wxid,
+    strip_sender_prefix=True
 ):
     from .parser_support import sender_prefix
 
@@ -257,7 +258,7 @@ def clean_group_content(
         group_wxid
     )
 
-    if cut:
+    if cut and strip_sender_prefix:
         text = text.lstrip(
             "\ufeff"
         )[cut:].strip()

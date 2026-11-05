@@ -7,11 +7,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel,Field,ValidationError
+from typing import Literal
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .engine import Engine
 from .model import DeepSeek,DeepSeekError,Reply
-from .settings import ConfigStore,RUNTIME,ROOT,Settings
+from .settings import ConfigStore,RUNTIME,ROOT,Settings,is_person_id
 from .store import Store
 from .agent import AgentManager
 from .memory import MemoryConflict
@@ -57,6 +58,7 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
                         find_tool=engine.agent_find_contacts,on_done=engine.agent_finished,on_cancel=engine.agent_cancelled)
     engine.agent_manager=agents
     token = secrets.token_urlsafe(32)
+    settings_lock = asyncio.Lock()
 
     @asynccontextmanager
     async def lifespan(app):
@@ -117,7 +119,13 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
 
     @app.put('/api/settings')
     async def save_settings(request:Request):
-        patch = await request.json()
+        return await apply_settings(await request.json())
+
+    async def apply_settings(patch):
+        async with settings_lock:
+            return await persist_settings(patch)
+
+    async def persist_settings(patch):
         raw = config.value.model_dump()
         patch.pop('api_key_configured',None)
         if patch.get('api_key')=='':
@@ -127,12 +135,17 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
             candidate = Settings.model_validate(raw)
             candidate.validate_workspaces()
             if len({g.id for g in candidate.groups})!=len(candidate.groups):
-                raise ValueError('群聊重复')
+                raise ValueError('会话重复')
         except (ValidationError,ValueError):
-            raise HTTPException(400,'设置有误，请检查频率、条数和群聊配置。') from None
+            raise HTTPException(400,'设置有误，请检查频率、条数和会话配置。') from None
         if engine.bridge and (candidate.wechat_account,candidate.wechat_data_dir)==(config.value.wechat_account,config.value.wechat_data_dir):
             for value in candidate.admin_accounts+candidate.secondary_admin_accounts:
                 engine.bridge.resolve(value,admin=True)
+            for conversation in candidate.groups:
+                if conversation.is_private:
+                    target=engine.bridge.resolve(conversation.id)
+                    if not is_person_id(conversation.id) or target['username']!=conversation.id or conversation.id==engine.bridge.self_id:
+                        raise HTTPException(400,'私聊监听必须选择真实的其他联系人。')
         resume = engine.running
         revision = engine.command_revision
         if (candidate.workspaces,candidate.agent,candidate.admin_accounts)!=(config.value.workspaces,config.value.agent,config.value.admin_accounts):
@@ -175,17 +188,44 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
         return result
 
     @app.get('/api/contacts')
-    async def contacts(q:str='',kind:str='group'):
+    async def contacts(q:str='',kind:Literal['group','person','all']='group'):
         if engine.bridge is None:
             await engine.connect()
         rows = engine.bridge.contacts
         if kind=='group':
             rows = [r for r in rows if r['username'].endswith('@chatroom')]
         elif kind=='person':
-            rows = [r for r in rows if not r['username'].endswith('@chatroom')]
+            rows = [r for r in rows if is_person_id(r['username']) and r['username']!=engine.bridge.self_id]
+        if kind=='all':
+            rows = [r for r in rows if r['username'].endswith('@chatroom') or (is_person_id(r['username']) and r['username']!=engine.bridge.self_id)]
         if q.strip():
             rows = [r for r in rows if q.casefold() in ' '.join(str(v or '') for v in r.values()).casefold()]
         return rows[:200]
+
+    @app.post('/api/contacts/{identifier}/role')
+    async def contact_role(identifier:str,request:Request):
+        body=await request.json()
+        async with settings_lock:
+            return await set_contact_role(identifier,body)
+
+    async def set_contact_role(identifier,body):
+        role=body.get('role')
+        if role not in ['member','secondary','admin']:raise HTTPException(400,'请选择普通、次级管理员或管理员。')
+        selected=next((g for g in config.value.groups if g.id==identifier and g.is_private),None)
+        if selected is None:raise HTTPException(404,'请先保存该联系人的监听配置。')
+        await engine.connect()
+        target=engine.bridge.resolve(identifier,admin=True)
+        if target['username']!=identifier or identifier==engine.bridge.self_id or not is_person_id(identifier):
+            raise HTTPException(400,'只能设置真实的其他联系人的权限。')
+        def remaining(values):
+            return [value for value in values if engine.bridge.resolve(value,admin=True)['username']!=identifier]
+        primary=remaining(config.value.admin_accounts)
+        secondary=remaining(config.value.secondary_admin_accounts)
+        if role=='admin':primary.append(identifier)
+        if role=='secondary':secondary.append(identifier)
+        settings=await persist_settings({'admin_accounts':primary,'secondary_admin_accounts':secondary})
+        await engine.connect()
+        return {'settings':settings,'status':engine.status()}
 
     @app.post('/api/monitor/start')
     async def start():
@@ -202,7 +242,8 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
         body = await request.json()
         if not isinstance(body.get('enabled'),bool):
             raise HTTPException(400,'请提供明确的开启或关闭状态。')
-        await engine.enable_group(identifier,body['enabled'])
+        async with settings_lock:
+            await engine.enable_group(identifier,body['enabled'])
         return {'settings':config.value.public(),'status':engine.status()}
 
     @app.post('/api/groups/{identifier}/quiet')
