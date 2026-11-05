@@ -1,0 +1,22 @@
+{
+  "module_sha256": "745cdf2955fa5128cdb00c056c97571156a5f107406a9bb15ac0754f3246b201",
+  "text_vtable_rva": "0x912c258",
+  "control_vtable_rva": "0x912c1c8",
+  "object_size": 1944,
+  "recipient_offset": 176,
+  "body_offset": 1880,
+  "type_offset": 280,
+  "subtype_offset": 284,
+  "body_length_offset": 456,
+  "uuid_offset": 1784,
+  "functions": {
+    "make_text_shared": "0x71c4e0",
+    "operator_new": "0x76a43bc",
+    "dispatch_candidate": "0x17cf210"
+  },
+  "prefixes": {
+    "make_text_shared": "555657534883ec38",
+    "operator_new": "40534883ec20488b",
+    "dispatch_candidate": "5541574156565753"
+  }
+}

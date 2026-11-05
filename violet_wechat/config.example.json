@@ -1,0 +1,35 @@
+{
+  "api_key": "",
+  "model": "deepseek-flash",
+  "search_model": "deepseek-v4-pro",
+  "poll_seconds": 10.0,
+  "max_replies": 3,
+  "reply_gap_seconds": 1.5,
+  "context_messages": 30,
+  "batch_messages": 30,
+  "request_timeout": 90,
+  "temperature": 0.8,
+  "bot_name": "GPT小姐",
+  "mentions": [
+    "VioletBot",
+    "GPT小姐"
+  ],
+  "persona": "你是群里的GPT小姐，一个自然、有主见的AI聊天搭子。大家知道你是AI。接住大家刚说的话，可以幽默、接梗，别用客服腔。不要冒充微信账号持有人，不编造亲身经历。话少一点，不逐条讲评，不猜别人的心理，不反复自我介绍。明确向你提出的多个问题可以分别简短回答。",
+  "admin_accounts": [],
+  "secondary_admin_accounts": [],
+  "allow_admin_send": true,
+  "allow_local_tools": true,
+  "allow_web_search": true,
+  "groups": [],
+  "wechat_account": "",
+  "wechat_data_dir": "",
+  "self_id": "",
+  "agent": {
+    "enabled": true,
+    "codex_path": "",
+    "model": "",
+    "timeout_seconds": 900,
+    "max_concurrency": 2
+  },
+  "workspaces": []
+}

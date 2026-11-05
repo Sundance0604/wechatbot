@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "violet-wechat"
+version = "0.6.2"
+description = "Independent DeepSeek chat and Codex workspace agents for WeChat"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "httpx>=0.27,<1", "pydantic>=2,<3", "psutil>=6,<8", "frida==17.25.2", "wechatauto-replica==1.2.1", "zstandard>=0.22", "tzdata"]
+
+[project.scripts]
+violet = "violet.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["violet*"]
+
+[tool.setuptools.package-data]
+violet = ["static/*", "native/*.js", "native/*.json"]

@@ -1,0 +1,5 @@
+wechatauto-replica==1.2.1
+psutil>=6,<8
+cryptography>=42,<51
+apsw==3.54.0.0
+zstandard>=0.22

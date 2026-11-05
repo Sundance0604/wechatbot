@@ -1,0 +1,9 @@
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+pydantic>=2,<3
+psutil>=6,<8
+frida==17.25.2
+wechatauto-replica==1.2.1
+zstandard>=0.22
+tzdata
