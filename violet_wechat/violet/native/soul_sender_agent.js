@@ -15,10 +15,10 @@ let closed = false;
 
 function inspectManager() {
   const manager = ptr(spec.manager_address);
-  requireValue(manager.readPointer().equals(at('0x93b68e8')), 'Sender manager changed');
-  const state = manager.add(0xbf8).readPointer();
+  requireValue(manager.readPointer().equals(at(spec.manager_vtable_rva)), 'Sender manager changed');
+  const state = manager.add(spec.manager_state_offset).readPointer();
   requireValue(!state.isNull(), 'Sender state missing');
-  const mask = state.add(0xc0).readU64().toNumber();
+  const mask = state.add(spec.state_mask_offset).readU64().toNumber();
   requireValue(mask >= 1 && mask <= 1048575 && (mask & (mask+1)) === 0, 'Sender state layout mismatch');
   return {pid:Process.id, worker_thread:spec.ui_thread_id, manager:manager.toString()};
 }

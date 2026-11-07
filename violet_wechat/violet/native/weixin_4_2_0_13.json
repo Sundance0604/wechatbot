@@ -1,0 +1,31 @@
+{
+  "module_sha256": "afe3d02c58bada3c35009c0cd58ee1f57b2a00fe53237d0dce649107fddb9a20",
+  "text_vtable_rva": "0x912f448",
+  "control_vtable_rva": "0x912f3b8",
+  "object_size": 1944,
+  "recipient_offset": 176,
+  "body_offset": 1880,
+  "type_offset": 280,
+  "subtype_offset": 284,
+  "body_length_offset": 456,
+  "uuid_offset": 1784,
+  "functions": {
+    "make_text_shared": "0x71ea50",
+    "operator_new": "0x76a750c",
+    "operator_delete": "0x76a7550",
+    "dispatch_candidate": "0x17db2d0",
+    "coroutine_entry": "0x4ab730"
+  },
+  "prefixes": {
+    "make_text_shared": "555657534883ec38",
+    "operator_new": "40534883ec20488b",
+    "operator_delete": "e9f3ffffffcccccc",
+    "dispatch_candidate": "5541574156565753",
+    "coroutine_entry": "554883ec20488d6c"
+  },
+  "version": "4.2.0.13",
+  "manager_vtable_rva": "0x93bc148",
+  "manager_state_offset": 3064,
+  "state_bucket_offset": 168,
+  "state_mask_offset": 192
+}

@@ -6,7 +6,7 @@ Violet 在本机独立运行：DeepSeek API 负责普通聊天和自然语言微
 
 ## 启动
 
-Windows、Python 3.11+。原生发送只适配 `native/weixin_4_2_0_11.json` 所描述的 Windows 微信 4.2.0.11 二进制；完整 SHA-256 必须匹配，同版本号不同文件也会拒绝。
+Windows、Python 3.11+。原生发送适配 `native/weixin_4_2_0_11.json` 与 `native/weixin_4_2_0_13.json` 所描述的 Windows 微信 4.2.0.11 / 4.2.0.13 二进制；完整 SHA-256 必须匹配，同版本号不同文件也会拒绝。
 
 ```powershell
 copy config.example.json config.local.json
@@ -26,6 +26,10 @@ violet --data-dir D:/VioletData --stop
 ```
 
 默认安装数据目录为 `%LOCALAPPDATA%/Violet`；源码目录已有 `config.local.json` 时沿用源码目录。`VIOLET_HOME` 或 `--data-dir` 可以显式选择，当前启动目录不会自动获得 Agent 权限。
+
+## 微信更新适配（0.7.1）
+
+新增 4.2.0.13 指定 SHA-256 模块支持，保留 4.2.0.11。读取、临时文本对象构造与释放、文件传输助手实际发送及服务器编号回查已通过。版本配置分别记录函数、虚表、管理器结构；连接按模块内容选择，未知模块仍拒绝发送。进程缓存只提供本次对象与线程地址，不能覆盖受信任的函数偏移。
 
 ## 联系人私聊监听（0.7.0）
 

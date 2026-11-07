@@ -3,6 +3,7 @@ const spec = __PROFILE__;
 const wx = Process.getModuleByName('Weixin.dll');
 const at = rva => wx.base.add(rva);
 const requireValue = (condition, message) => { if (!condition) throw Error(message); };
+requireValue(wx.path.replace(/\//g,'\\').toLowerCase() === spec.module_path.replace(/\//g,'\\').toLowerCase(), 'Loaded module path mismatch');
 for (const [name, rva] of Object.entries(spec.functions)) {
   const prefix = Array.from(new Uint8Array(at(rva).readByteArray(8)))
     .map(x => x.toString(16).padStart(2, '0')).join('');

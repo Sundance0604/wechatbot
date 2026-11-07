@@ -1,12 +1,12 @@
-"""Recover current-process context only for the authenticated WeChat 4.2.0.11 binary."""
+"""Recover current-process context only for authenticated WeChat binaries."""
 import asyncio
-import hashlib
 import json
 from pathlib import Path
 import time
 
 import frida
 import psutil
+from .native_profiles import load_module_profile
 
 
 async def recover(runtime):
@@ -14,7 +14,6 @@ async def recover(runtime):
 
 
 def _recover(runtime):
-    template = json.loads((Path(__file__).parent/'native/weixin_4_2_0_11.json').read_text(encoding='utf-8'))
     processes = [p for p in psutil.process_iter(['name','memory_info']) if (p.info['name'] or '').lower()=='weixin.exe']
     if not processes:
         raise RuntimeError('请先登录电脑版微信。')
@@ -24,19 +23,27 @@ def _recover(runtime):
     try:
         script = session.create_script('''
 const m=Process.getModuleByName('Weixin.dll');
-let hook=null;const counts={};
+let hook=null,spec=null;const counts={};
 rpc.exports={
  meta(){return {path:m.path,pid:Process.id};},
- watch(){hook=Interceptor.attach(m.base.add(0x4a9d40),{onEnter(){const t=Process.getCurrentThreadId();counts[t]=(counts[t]||0)+1;}});},
+ watch(profile){
+  spec=profile;
+  for(const [name,rva] of Object.entries(spec.functions)){
+   const prefix=Array.from(new Uint8Array(m.base.add(rva).readByteArray(8))).map(x=>x.toString(16).padStart(2,'0')).join('');
+   if(prefix!==spec.prefixes[name])throw Error('Code prefix mismatch: '+name);
+  }
+  hook=Interceptor.attach(m.base.add(spec.functions.coroutine_entry),{onEnter(){const t=Process.getCurrentThreadId();counts[t]=(counts[t]||0)+1;}});
+ },
  scan(){
-  const v=Memory.alloc(8);v.writePointer(m.base.add(0x93b68e8));
+  if(!spec)throw Error('Unverified module');
+  const v=Memory.alloc(8);v.writePointer(m.base.add(spec.manager_vtable_rva));
   const pattern=Array.from(new Uint8Array(v.readByteArray(8))).map(x=>x.toString(16).padStart(2,'0')).join(' ');
   const found=[];
   for(const r of Process.enumerateRanges({protection:'rw-',coalesce:true})){
    if(r.file||r.size>256*1024*1024)continue;
    try{for(const hit of Memory.scanSync(r.base,r.size,pattern)){
-    try{const state=hit.address.add(0xbf8).readPointer();if(state.isNull())continue;
-     const mask=state.add(0xc0).readU64().toNumber(),bucket=state.add(0xa8).readPointer();
+    try{const state=hit.address.add(spec.manager_state_offset).readPointer();if(state.isNull())continue;
+     const mask=state.add(spec.state_mask_offset).readU64().toNumber(),bucket=state.add(spec.state_bucket_offset).readPointer();
      if(mask<1||mask>1048575||(mask&(mask+1))!==0||bucket.isNull())continue;
      bucket.readByteArray(16);found.push(hit.address.toString());
     }catch(_){}
@@ -48,9 +55,8 @@ rpc.exports={
 ''')
         script.load()
         meta = script.exports_sync.meta()
-        if hashlib.sha256(Path(meta['path']).read_bytes()).hexdigest()!=template['module_sha256']:
-            raise RuntimeError('当前微信版本尚未适配；已停止，未调用发送函数。当前仅验证4.2.0.11。')
-        script.exports_sync.watch()
+        template = load_module_profile(meta['path'])
+        script.exports_sync.watch(template)
         candidates = script.exports_sync.scan()
         deadline = time.monotonic()+12
         counts = {}
@@ -71,7 +77,7 @@ rpc.exports={
         temporary = path.with_suffix('.tmp')
         temporary.write_text(json.dumps(template,ensure_ascii=False,indent=2),encoding='utf-8')
         temporary.replace(path)
-        return {'connected':True,'version':'4.2.0.11'}
+        return {'connected':True,'version':template['version']}
     finally:
         if script:
             script.exports_sync.stop()
