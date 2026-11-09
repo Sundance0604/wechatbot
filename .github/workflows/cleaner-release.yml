@@ -18,7 +18,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: wechat_cleaner/frontend/package-lock.json
-      - run: python -m pip install -e ./wechat_cleaner -r requirements-dev.txt pyinstaller
+      - run: python -m pip install -e "./wechat_cleaner[test]" -r requirements-dev.txt pyinstaller
       - name: Validate release version
         shell: python
         run: |

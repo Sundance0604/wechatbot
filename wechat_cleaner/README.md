@@ -53,6 +53,7 @@ python wechat_cleaner/run.py
 python wechat_cleaner/run.py --demo
 
 # 后端测试均使用合成加密数据库
+python -m pip install -e "./wechat_cleaner[test]"
 python -m pytest wechat_cleaner/tests -q
 
 # 浏览器流程测试：先单独启动演示服务

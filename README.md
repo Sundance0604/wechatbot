@@ -32,7 +32,7 @@ copy config.example.json config.local.json
 
 ## 清简：独立清理应用 0.2
 
-**[下载 Windows 实验版 exe / 发行包](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.0-alpha)** · **[使用与构建说明](wechat_cleaner/README.md)**
+**[下载 Windows 实验版 exe / 发行包](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.0-alpha.1)** · **[使用与构建说明](wechat_cleaner/README.md)**
 
 - 联系人私聊与群聊可混合选择；两类各有全选、清空和搜索结果选择。
 - 输入删除词和日期范围，预览发送者、时间、正文，再逐条核对。聊天记录全选仅包含当前预览中可清理的消息。
@@ -65,7 +65,7 @@ python wechat_message_cleanup/offline_writeback.py --help
 
 ## 测试
 
-从仓库根目录，在独立 Python 环境安装各项目依赖（包括 `pip install -e ./wechat_cleaner`）及 `requirements-dev.txt`，运行：
+从仓库根目录，在独立 Python 环境安装各项目依赖（包括 `pip install -e "./wechat_cleaner[test]"`）及 `requirements-dev.txt`，运行：
 
 ```powershell
 python -m pytest -q -p no:cacheprovider

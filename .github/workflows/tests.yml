@@ -16,7 +16,7 @@ jobs:
           cache: npm
           cache-dependency-path: wechat_cleaner/frontend/package-lock.json
       - run: python -m pip install -r violet_wechat/requirements.txt -r wechat_message_cleanup/requirements.txt -r requirements-dev.txt
-      - run: python -m pip install -e ./wechat_cleaner
+      - run: python -m pip install -e "./wechat_cleaner[test]"
       - run: npm ci
         working-directory: wechat_cleaner/frontend
       - run: npm run build:cleaner
