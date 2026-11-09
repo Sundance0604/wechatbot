@@ -54,3 +54,10 @@
 **/node_modules/
 .vscode/
 .idea/
+
+# Standalone cleanup app: generated and private workspaces
+**/.build/
+**/comparison_runs/
+**/pytest-cache-files-*/
+**/cleaner/static/
+*.exe

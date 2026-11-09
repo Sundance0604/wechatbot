@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wechat-cleaner"
+version = "0.2.0"
+description = "Standalone local WeChat message cleanup"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1", "psutil>=6,<8", "wechatauto-replica==1.2.1", "apsw>=3.45", "cryptography>=42", "zstandard>=0.22", "tzdata"]
+
+[project.scripts]
+wechat-cleaner = "cleaner.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cleaner*"]
+
+[tool.setuptools.package-data]
+cleaner = ["static/*", "static/assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

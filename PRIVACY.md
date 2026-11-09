@@ -2,7 +2,7 @@
 
 ## 本次公开内容
 
-仅发布两个项目的源代码、空白配置样例、虚构测试数据、安装脚本和技术文档。原工作区、其历史提交以及任何真实运行目录均不在发布副本中。
+仅提交清理应用、研究脚本与 Violet 的源代码、空白配置样例、虚构测试数据、安装脚本和技术文档。原工作区、其历史提交以及任何真实运行目录均不在发布副本中。
 
 公开版额外做了三项处理：
 
@@ -14,12 +14,16 @@
 
 | 数据 | 内容与位置 | 是否可以发布 |
 | --- | --- | --- |
+| 清简 `%LOCALAPPDATA%/WeChatCleaner/runs` | 加密原件备份、待写回文件、账号/会话/删除词及恢复日志 | 否 |
+| 清简 `cache` 和准备阶段明文副本 | 查询解密缓存；退出或准备结束后清理，异常残留在下次启动清理 | 否 |
 | Violet `config.local.json` | 模型密钥、微信账号、群和管理员配置 | 否 |
 | Violet `runtime/state.sqlite3` 及 sidecar | 收件箱、待发正文、发送确认、任务与事件 | 否 |
 | `runtime/group_memory` / 主人资料 | 用户手工确认的群背景及个人介绍 | 否 |
 | `runtime/native_profile.json` | 当前进程、模块路径、对象地址、线程号 | 否 |
 | `offline_runs` / `writeback_runs` | 明文聊天快照、加密原件备份、删除目标、校验日志 | 否 |
 | 上游读取库工作目录 | 解密缓存及 `keys.json`，默认可能在系统临时目录 | 否 |
+
+清简不新建明文密钥缓存，提取的密钥仅保留在内存中；可以读取上游工具既有缓存。旧研究脚本与 Violet 仍遵循上游缓存机制。
 
 “密钥不回传面板”和“密钥只保存在本机”不表示磁盘上的密钥被加密。`wechatauto-replica` 会在本机缓存经过校验的数据库密钥；程序也会保存明文聊天副本。应当按本机敏感资料管理这些文件。
 
@@ -35,7 +39,7 @@
 
 ```powershell
 python tools/privacy_audit.py
-git add README.md PRIVACY.md THIRD_PARTY.md docs tools .github pytest.ini requirements-dev.txt violet_wechat wechat_message_cleanup
+git add README.md PRIVACY.md THIRD_PARTY.md docs tools .github pytest.ini requirements-dev.txt violet_wechat wechat_message_cleanup wechat_cleaner
 python tools/privacy_audit.py --staged
 git diff --cached --stat
 ```

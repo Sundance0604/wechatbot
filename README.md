@@ -1,9 +1,10 @@
 # WeChat local database cleanup & Violet bot
 
-本仓库包含两个 Windows 微信研究项目。二者共用“读取本机已登录账号的加密聊天数据”这一基础，但写入路径完全不同：
+本仓库包含独立的 Windows 微信本地清理应用、离线清理研究脚本与 Violet bot。清理应用不接入邮件或 Hook 机器人；各项目共用本机数据库读取基础，保持独立运行。
 
 | 项目 | 做什么 | 实现路径 | 当前边界 |
 | --- | --- | --- | --- |
+| [清简 · wechat_cleaner](wechat_cleaner/) | 联系人/群聊关键词查询、预览、全选、备份、离线删除及恢复 | 独立 React 面板 + 本机 Python 服务 + 加密数据库写回 | 0.2 实验版；历史纯文本，存在版本及状态限制 |
 | [wechat_message_cleanup](wechat_message_cleanup/) | 关键词扫描、离线副本删除、受限写回实验 | 数据库解密 → SQL 删除 → FTS 索引维护 → 重加密 → 退出微信后替换指定文件 | 写回仍保留原实验的严格样本限制，不是通用清理器 |
 | [violet_wechat](violet_wechat/) | 群聊/私聊 AI 对话、管理员微信命令、Codex 工作区任务 | 只读聊天库 + 微信进程内原生文本发送 | 原生发送仅适配指定的 Windows 微信 4.2.0.11 / 4.2.0.13 模块指纹 |
 
@@ -29,7 +30,28 @@ copy config.example.json config.local.json
 
 打开 <http://127.0.0.1:8766>，填写自己的模型连接、监听会话和管理员身份。开始监听是单独的操作。若原生连接尚未初始化，先在微信手动发一条普通文字，再在面板重新连接发送。没有配置任何真实账号、群或 API Key。
 
-## 删除项目的入口
+## 清简：独立清理应用 0.2
+
+**[下载 Windows 实验版 exe / 发行包](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.0-alpha)** · **[使用与构建说明](wechat_cleaner/README.md)**
+
+- 联系人私聊与群聊可混合选择；两类各有全选、清空和搜索结果选择。
+- 输入删除词和日期范围，预览发送者、时间、正文，再逐条核对。聊天记录全选仅包含当前预览中可清理的消息。
+- 正常退出微信后，先完整备份并重新核验，再单独确认写入。保留失败回滚、重启恢复和新数据保护。
+- 不含邮件投递、模型服务或 Hook 机器人；用户无需配置模型或安装 Python 即可运行发行版。
+
+当前写回适配微信 4.2.0.11 / 4.2.0.13 的已验证结构及 32 字节数据库密钥格式。最后一条、未读状态、媒体引用、活动日志或无法唯一核验的索引会停止处理。尚未完成多台电脑及真实写回后的客户端发布验收。
+
+从源码启动：
+
+```powershell
+python -m pip install -e ./wechat_cleaner
+npm --prefix wechat_cleaner/frontend ci
+npm --prefix wechat_cleaner/frontend run build:cleaner
+python wechat_cleaner/run.py
+```
+
+## 原始离线研究脚本
+
 
 ```powershell
 python -m pip install -r wechat_message_cleanup/requirements.txt
@@ -43,7 +65,7 @@ python wechat_message_cleanup/offline_writeback.py --help
 
 ## 测试
 
-从仓库根目录，在独立 Python 环境安装两个项目依赖及 `requirements-dev.txt`，运行：
+从仓库根目录，在独立 Python 环境安装各项目依赖（包括 `pip install -e ./wechat_cleaner`）及 `requirements-dev.txt`，运行：
 
 ```powershell
 python -m pytest -q -p no:cacheprovider
@@ -56,6 +78,6 @@ python tools/privacy_audit.py
 
 此版本来自独立整理的源码副本，没有上传原工作区 Git 历史，也没有复制个人配置、账号映射、群记忆、主人资料、聊天记录、密钥缓存、数据库备份、截图、进程转储或运行日志。示例联系人均为虚构占位符。
 
-删除项目只保留数据库扫描/副本实验/写回核心；早期临时 Hook 探针和已被 Violet 替代的旧聊天机器人没有发布。Violet 中已保留实际使用的原生发送适配器及其版本指纹。这样可以直接阅读现行实现，不依赖私人实验目录或原父项目。
+`wechat_message_cleanup` 保留数据库扫描/副本实验/写回核心，新的 `wechat_cleaner` 提供独立清理面板与通用候选计划；早期临时 Hook 探针和已被 Violet 替代的旧聊天机器人没有发布。Violet 中已保留实际使用的原生发送适配器及其版本指纹。这样可以直接阅读现行实现，不依赖私人实验目录或原父项目。
 
 运行后产生的数据仍可能含有私密内容。`.gitignore` 与隐私扫描提供误提交防护，不会加密文件，也不能替代人工审核。详细说明见 [PRIVACY.md](PRIVACY.md)。仓库保留既有 [GPLv3 许可证](LICENSE)，第三方依赖及文档来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。

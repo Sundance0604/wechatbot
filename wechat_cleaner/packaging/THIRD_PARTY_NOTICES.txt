@@ -1,0 +1,7 @@
+WeChatCleaner uses the unmodified database-reading module (wechatauto/db.py)
+from wechatauto-replica 1.2.1, licensed under Apache License 2.0.
+Its full license is bundled under licenses/wechatauto-replica/LICENSE.
+The upstream GUI, message sending entry points, and Hook robot are not loaded.
+
+Other third-party libraries retain their respective licenses. Collected license
+texts are included under licenses in the runtime bundle where available.

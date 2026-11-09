@@ -12,9 +12,10 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 PRIVATE_PARTS={'runtime','private_cache','offline_runs','writeback_runs','hook_watch_runs','hook_dependencies',
-               'soul_runtime','group_memory','analyses','node_modules','.venv','__pycache__'}
+               'soul_runtime','group_memory','analyses','node_modules','.venv','__pycache__',
+               '.build','comparison_runs','cache','runs'}
 PRIVATE_NAMES={'config.local.json','config.json','keys.json','owners.json','owner_profile.md','monitored_groups.json'}
-PRIVATE_SUFFIXES={'.db','.sqlite','.sqlite3','.dmp','.bin','.log','.jsonl','.pem','.key','.pfx','.png','.jpg','.jpeg','.mp3','.mp4','.zip','.whl'}
+PRIVATE_SUFFIXES={'.db','.sqlite','.sqlite3','.dmp','.bin','.log','.jsonl','.pem','.key','.pfx','.png','.jpg','.jpeg','.mp3','.mp4','.zip','.whl','.exe'}
 PATTERNS={
     'possible_api_key':re.compile(r'\bsk-[A-Za-z0-9_-]{20,}\b'),
     'real_account_identifier':re.compile(r'\bwxid_[a-zA-Z0-9]{12,}\b'),

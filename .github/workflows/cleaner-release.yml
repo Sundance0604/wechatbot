@@ -1,0 +1,106 @@
+name: Cleaner Windows release
+on:
+  push:
+    tags: ['cleaner-v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: wechat_cleaner/frontend/package-lock.json
+      - run: python -m pip install -e ./wechat_cleaner -r requirements-dev.txt pyinstaller
+      - name: Validate release version
+        shell: python
+        run: |
+          import os, re
+          from cleaner import __version__
+          assert re.fullmatch(r'cleaner-v' + re.escape(__version__) + r'(?:-alpha(?:\.\d+)?)?', os.environ['GITHUB_REF_NAME'])
+      - run: npm ci
+        working-directory: wechat_cleaner/frontend
+      - run: npx playwright install chromium
+        working-directory: wechat_cleaner/frontend
+      - run: python tools/privacy_audit.py
+      - run: python -m pytest wechat_cleaner/tests -q -p no:cacheprovider --import-mode=importlib
+      - name: Build single-file executable
+        run: ./wechat_cleaner/packaging/build.ps1 -Python python -OneFile
+      - name: Test packaged runtime without Python on PATH
+        run: python wechat_cleaner/packaging/smoke.py wechat_cleaner/dist/WeChatCleaner.exe --output wechat_cleaner/.build/release-smoke --serve-demo --port 8878
+      - name: Verify contacts, groups, select-all and recovery UI
+        run: npm run qa:cleaner
+        working-directory: wechat_cleaner/frontend
+      - name: Stop synthetic demo
+        if: always()
+        shell: python
+        run: |
+          import json, urllib.request
+          try:
+              root = 'http://127.0.0.1:8878/api'
+              headers = {'X-Cleaner-Client':'1'}
+              session = json.load(urllib.request.urlopen(urllib.request.Request(root+'/session', headers=headers), timeout=3))
+              headers['X-Cleaner-Token'] = session['token']
+              urllib.request.urlopen(urllib.request.Request(root+'/quit', data=b'', headers=headers, method='POST'), timeout=3).close()
+          except OSError:
+              pass
+      - name: Prepare release assets and verification
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, json, shutil, zipfile
+          from cleaner import __version__
+          root = Path('wechat_cleaner')
+          exe = root/'dist/WeChatCleaner.exe'
+          qa = json.loads((root/'.build/qa/report.json').read_text(encoding='utf-8'))
+          smoke = json.loads((root/'.build/release-smoke/smoke.json').read_text(encoding='utf-8'))
+          assert not qa['browserErrors'] and not qa['mobileHorizontalOverflow']
+          assert smoke['status'] == 'passed'
+          for name in ('使用说明.txt','THIRD_PARTY_NOTICES.txt'):
+              shutil.copy2(root/'packaging'/name, root/'dist'/name)
+          shutil.copy2('LICENSE', root/'dist/LICENSE')
+          checksum = hashlib.sha256(exe.read_bytes()).hexdigest()
+          report = {'version':__version__+'-alpha','exe_sha256':checksum,'browser':qa,
+                    'packaged_selftest':{k:v for k,v in smoke.items() if not k.startswith('demo_')},
+                    'real_database_mutations':False,'client_acceptance_tested':False}
+          (root/'dist/verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          archive = root/f'dist/WeChatCleaner-{__version__}-win-x64.zip'
+          with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as package:
+              for name in ('WeChatCleaner.exe','使用说明.txt','THIRD_PARTY_NOTICES.txt','verification.json','LICENSE'):
+                  package.write(root/'dist'/name,name)
+          (root/'dist/SHA256SUMS.txt').write_text(checksum+'  WeChatCleaner.exe\n'+hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n',encoding='utf-8')
+          (root/'.build/release-notes.md').write_text(
+              '# 清简 '+__version__+' 实验版\n\n'
+              '新增联系人私聊，可与群聊混合查询和清理。联系人、群聊及当前预览可清理记录分别支持全选。\n\n'
+              'Windows x64，双击 exe 自动打开本机面板，无需 Python 或 Node。仅支持已适配微信版本的普通历史纯文本。\n\n'
+              '已运行合成加密库测试、打包诊断及浏览器流程验证；未操作真实账号，实际写回后的客户端验收仍待完成。\n\n'
+              '运行前先退出旧版清简；登录微信连接、查询预览后，再按提示退出微信、备份并确认删除。\n',encoding='utf-8')
+      - name: Publish prerelease
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const tag = context.ref.replace('refs/tags/', '');
+            const {data: release} = await github.rest.repos.createRelease({
+              ...context.repo, tag_name: tag,
+              name: `清简 ${tag} · Windows 实验版`, prerelease: true,
+              body: fs.readFileSync('wechat_cleaner/.build/release-notes.md', 'utf8')
+            });
+            const directory = 'wechat_cleaner/dist';
+            const archive = fs.readdirSync(directory).find(name => /^WeChatCleaner-.*-win-x64\.zip$/.test(name));
+            if (!archive) throw new Error('Release archive is missing');
+            for (const name of ['WeChatCleaner.exe', archive, 'SHA256SUMS.txt']) {
+              const data = fs.readFileSync(path.join(directory, name));
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo, release_id: release.id, name, data,
+                headers: {'content-type': 'application/octet-stream', 'content-length': data.length}
+              });
+            }
