@@ -64,6 +64,7 @@ def require_checkpointed(source, upstream):
 
 class LocalReader:
     def __init__(self, account, directory, cache):
+        from .diagnostics import event
         WeChatDB = get_upstream().WeChatDB
         root = account_root(directory)
         if not re.fullmatch(r"wxid_[A-Za-z0-9_]+", account):
@@ -71,6 +72,7 @@ class LocalReader:
         self.source = safe_path(root, account + "/db_storage")
         if not self.source.is_dir():
             raise CleanupError("该账号没有本地数据库。")
+        event("connection_environment", account=account, source=str(self.source), wechat=process_status())
 
         class Reader(WeChatDB):
             def _find_weixin_pids(self):
@@ -123,6 +125,7 @@ class LocalReader:
                 "group_count": len(self.groups()), "contact_count": len(self.people())}
 
     def decode_backup(self, raw, plain, relatives):
+        from .diagnostics import event
         checks = {}
         for relative in relatives:
             output = safe_path(plain, relative)
@@ -131,8 +134,10 @@ class LocalReader:
             if not key:
                 raise CleanupError(f"数据库没有可用密钥：{relative}")
             source = safe_path(raw, relative)
+            event("decode_database", path=relative, encrypted_bytes=source.stat().st_size)
             upstream = get_upstream()
             checks[relative] = require_checkpointed(source, upstream)
+            event("database_wal_checked", path=relative, check=checks[relative])
             encrypted = source.read_bytes()
             if len(key) != 32 or not upstream._verify_enc_key(key, encrypted[:upstream.PAGE_SZ]):
                 raise CleanupError("数据库密钥格式不受支持或已失效，请重新连接微信。")

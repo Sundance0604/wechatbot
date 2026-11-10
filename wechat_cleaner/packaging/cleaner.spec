@@ -3,7 +3,7 @@ from importlib.metadata import distribution
 from pathlib import Path
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 root = Path(SPECPATH).parent
 reader = distribution('wechatauto-replica')
@@ -13,6 +13,8 @@ datas = [(str(root / 'cleaner/static'), 'cleaner/static'),
 # Use the original basename in the bundle; the runtime loader checks db.py too.
 datas += [(str(reader.locate_file('wechatauto_replica-1.2.1.dist-info/licenses/LICENSE')), 'licenses/wechatauto-replica')]
 datas += collect_data_files('tzdata')
+for name in ('fastapi','starlette','uvicorn','apsw','cryptography','psutil','wechatauto-replica'):
+    datas += copy_metadata(name)
 if (root.parent / 'LICENSE').is_file():
     datas.append((str(root.parent / 'LICENSE'), 'licenses/WeChatCleaner'))
 datas += [(str(root / 'packaging/THIRD_PARTY_NOTICES.txt'), 'licenses')]

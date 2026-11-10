@@ -98,6 +98,14 @@ def fts_inventory(conn, names):
 def open_fts(path):
     """Build an exact token replay map from the existing index, without guessing segmentation."""
     conn = apsw.Connection(str(path))
+    try:
+        return _prepare_fts(conn)
+    except BaseException:
+        conn.close()
+        raise
+
+
+def _prepare_fts(conn):
     replay = {}
 
     def factory(connection, args):

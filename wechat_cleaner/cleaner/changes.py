@@ -11,6 +11,7 @@ from .database import (authenticated_decrypt, encoded_row, encrypt_snapshot,
                        fts_inventory, inventories, open_fts, open_readonly, require_integrity)
 from .files import CleanupError, safe_path, sha
 from .upstream import get_upstream
+from .diagnostics import event, inspect_fts_schema
 
 
 def modify_copies(plain, modified, targets):
@@ -58,10 +59,15 @@ def modify_copies(plain, modified, targets):
     path = safe_path(modified, rel)
     path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(safe_path(plain, rel), path)
+    schema = inspect_fts_schema(path)
+    names = {item["name"] for item in schema["virtual_tables"]}
+    if names != {f"message_fts_v4_{i}" for i in range(4)}:
+        event("fts_schema_mismatch", missing=sorted(set(schema["expected_virtual_tables"]) - names),
+              extra=sorted(names - set(schema["expected_virtual_tables"])))
+        error = CleanupError("全文索引结构不在当前支持范围内。请导出诊断包以适配此结构。")
+        error.diagnostic_code = "FTS_SCHEMA_UNSUPPORTED"
+        raise error
     fts, virtuals, vocabulary = open_fts(path)
-    if set(virtuals) != {f"message_fts_v4_{i}" for i in range(4)}:
-        fts.close()
-        raise CleanupError("全文索引结构不在当前支持范围内。")
     ordinary = [r[0] for r in fts.execute("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'")]
     expected = fts_inventory(fts, ordinary)
     removed = defaultdict(set)

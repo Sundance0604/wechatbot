@@ -8,6 +8,7 @@ import re
 import shutil
 
 from .files import CleanupError, hashes, read, require_stopped, safe_path, save, sha
+from .diagnostics import event
 
 PENDING = {"applying", "restoring", "recovery_required"}
 SIDECARS = ("-wal", "-shm", "-journal")
@@ -42,6 +43,10 @@ class Journal:
                 raise CleanupError("清理计划包含未支持的文件。")
             if change["before"] != plan["baseline"].get(rel) or sha(safe_path(run / "staged", rel)) != change["after"]:
                 raise CleanupError("清理计划的文件校验未通过。")
+        event("verified_plan", run_id=identifier, source=str(source), backup=str(run / "backup"),
+              status=plan["status"], version=plan.get("version"), account=plan["account"],
+              keyword=plan.get("keyword"), conversations=plan.get("conversation_names", plan.get("group_names", [])),
+              files=[c["path"] for c in plan["changes"]])
         return run, plan, source
 
     def list(self):
@@ -89,6 +94,7 @@ class Journal:
                 if hashes(source) != expected:
                     raise CleanupError("微信数据在写入过程中变化，已停止。")
                 rel = change["path"]
+                event("install_file", path=rel)
                 for suffix in SIDECARS:
                     sidecar = safe_path(source, rel + suffix)
                     if sidecar.exists():
@@ -100,6 +106,7 @@ class Journal:
                 expected[rel] = change["after"]
                 plan["completed_files"].append(rel)
                 save(run / "plan.json", plan)
+                event("file_installed", path=rel)
             self.stopped()
             if hashes(source) != expected:
                 raise CleanupError("写入后的文件校验未通过。")
@@ -107,6 +114,7 @@ class Journal:
                         installed_at=datetime.now(timezone.utc).isoformat(), client_acceptance_tested=False)
             save(run / "plan.json", plan)
         except BaseException as error:
+            event("installation_interrupted", error_type=type(error).__name__)
             plan.update(status="recovery_required", error=type(error).__name__)
             save(run / "plan.json", plan)
             try:
@@ -118,6 +126,7 @@ class Journal:
                 "backup": str(run / "backup"), "client_acceptance_tested": False}
 
     def recover(self, identifier, restore=False):
+        event("restore_started", run_id=identifier, restore=restore)
         self.stopped()
         run, plan, source = self.load(identifier)
         if restore:
@@ -145,6 +154,7 @@ class Journal:
             for change in plan["changes"]:
                 self.stopped()
                 rel = change["path"]
+                event("restore_file", path=rel)
                 temporary = self._temporary(source, rel, identifier)
                 if temporary.exists():
                     temporary.unlink()
@@ -157,6 +167,7 @@ class Journal:
                         shutil.copy2(saved, sidecar)
                     elif sidecar.exists():
                         sidecar.unlink()
+                event("file_restored", path=rel)
             self.stopped()
             if hashes(source) != plan["baseline"]:
                 raise CleanupError("恢复后的文件校验未通过。")

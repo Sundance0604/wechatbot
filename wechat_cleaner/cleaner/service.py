@@ -11,6 +11,7 @@ from .files import CleanupError, hashes, read, require_stopped, safe_path, save,
 from .journal import Journal
 from .reader import LocalReader, SnapshotReader, SUPPORTED_VERSIONS, accounts
 from .selection import search, validate_targets
+from .diagnostics import event
 
 
 class CleanerService:
@@ -56,6 +57,10 @@ class CleanerService:
             if self.reader is None:
                 raise CleanupError("请先连接微信账号。")
             progress(20, "正在查询所选联系人与群聊的本地消息")
+            scope = request.get("conversation_ids", request.get("group_ids", []))
+            event("query_context", account=self.reader.account, version=self.reader.version,
+                  source=str(self.reader.source), keyword=request.get("keyword"),
+                  conversations=[{"id": user, "name": self.reader.names.get(user, user)} for user in scope])
             result = search(self.reader, **request)
             identifier = uuid.uuid4().hex
             self.scans = {identifier: {"account": self.reader.account, "messages": result["messages"], "request": request}}
@@ -96,9 +101,13 @@ class CleanerService:
                     "conversation_count": len(conversations), "conversations": conversations,
                     "keyword": scan["request"]["keyword"], "changes": []}
             save(run / "plan.json", plan)
+            event("plan_context", run_id=identifier, source=str(source), version=self.reader.version,
+                  account=self.reader.account, account_name=plan["account_name"], keyword=plan["keyword"],
+                  conversations=conversations, selected_count=len(targets))
             try:
                 progress(10, "正在备份当前账号的数据库和日志")
                 baseline = hashes(source)
+                event("backup_inventory", file_count=len(baseline), source=str(source), backup=str(run / "backup"))
                 shutil.copytree(source, run / "backup")
                 self.stopped()
                 if hashes(run / "backup") != baseline or hashes(source) != baseline:
@@ -109,6 +118,7 @@ class CleanerService:
                 relatives = sorted({"session/session.db", "message/message_resource.db", "message/message_fts.db"}
                                    | {item["shard"] for item in targets})
                 plan["wal_checks"] = self.reader.decode_backup(run / "backup", run / "plain", relatives)
+                event("wal_checks_completed", checks=plan["wal_checks"])
                 validate_targets(SnapshotReader(run / "plain", self.reader), targets)
                 progress(55, "正在副本中更新消息正文和全文索引")
                 changed = modify_copies(run / "plain", run / "modified", targets)

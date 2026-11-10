@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 
 from .files import CleanupError
+from .diagnostics import event
 
 
 def header_checksum(data, magic):
@@ -32,6 +33,7 @@ def inspect_inactive_wal(path, page_size=4096):
     result = {"bytes": size, "frame_size": frame_size,
               "complete_slots": max(0, size - 32) // frame_size,
               "trailing_bytes": max(0, size - 32) % frame_size}
+    event("inspect_wal", path=str(path), **result)
     if size <= 32:
         return {**result, "state": "no_frame_data"}
     detail = f"{path.name}；{size} 字节，尾部 {result['trailing_bytes']} 字节"
@@ -40,6 +42,7 @@ def inspect_inactive_wal(path, page_size=4096):
         if len(header) != 32:
             raise CleanupError(f"日志在检查期间发生变化，已停止（{detail}）。")
         magic, version, stored_page_size = struct.unpack(">III", header[:12])
+        event("wal_header", format_magic=hex(magic), format_version=version, page_size=stored_page_size)
         if magic not in (0x377F0682, 0x377F0683) or version != 3007000 or stored_page_size != page_size:
             raise CleanupError(f"写入日志格式不受支持，请保留备份后检查微信版本（{detail}）。")
         if header_checksum(header, magic) != struct.unpack(">II", header[24:32]):

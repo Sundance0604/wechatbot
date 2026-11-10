@@ -3,17 +3,20 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 import secrets
+import uuid
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .files import CleanupError, process_status
 from .jobs import Jobs
+from .diagnostics import Diagnostics
 from .reader import accounts
 from .service import CleanerService
 from . import __version__
@@ -52,7 +55,8 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
             service = DemoService()
         else:
             service = CleanerService(data_dir)
-    jobs = Jobs()
+    diagnostics = Diagnostics(data_dir, demo=demo)
+    jobs = Jobs(diagnostics)
     token = secrets.token_urlsafe(32)
 
     @asynccontextmanager
@@ -64,6 +68,7 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
 
     app = FastAPI(title="清简 · 微信记录清理", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.service, app.state.jobs = service, jobs
+    app.state.diagnostics = diagnostics
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
     @app.middleware("http")
@@ -86,7 +91,17 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
 
     @app.exception_handler(CleanupError)
     async def cleanup_error(request, error):
-        return JSONResponse({"detail": str(error)}, status_code=409)
+        identifier = uuid.uuid4().hex
+        diagnostics.start(identifier, "api", {"method": request.method, "path": request.url.path})
+        detail = diagnostics.finish(identifier, error=error)
+        return JSONResponse({"detail": str(error), "diagnostic_id": identifier, "diagnostic": detail}, status_code=409)
+
+    @app.exception_handler(Exception)
+    async def unexpected_error(request, error):
+        identifier = uuid.uuid4().hex
+        diagnostics.start(identifier, "api", {"method": request.method, "path": request.url.path})
+        detail = diagnostics.finish(identifier, error=error)
+        return JSONResponse({"detail": "本机操作发生异常，请到任务与诊断页导出诊断包。", "diagnostic_id": identifier, "diagnostic": detail}, status_code=500)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_input(request, error):
@@ -110,7 +125,7 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
 
     @app.post("/api/connect")
     def connect(body: Connection):
-        return jobs.submit("connect", lambda p: service.connect(body.account, body.directory, p))
+        return jobs.submit("connect", lambda p: service.connect(body.account, body.directory, p), body.model_dump())
 
     @app.get("/api/groups")
     def groups():
@@ -126,15 +141,15 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
 
     @app.post("/api/search")
     def find(body: Search):
-        return jobs.submit("search", lambda p: service.search(body.model_dump(), p))
+        return jobs.submit("search", lambda p: service.search(body.model_dump(), p), body.model_dump())
 
     @app.post("/api/prepare")
     def prepare(body: Prepare):
-        return jobs.submit("prepare", lambda p: service.prepare(body.scan_id, body.ids, p))
+        return jobs.submit("prepare", lambda p: service.prepare(body.scan_id, body.ids, p), body.model_dump())
 
     @app.post("/api/execute")
     def execute(body: Plan):
-        return jobs.submit("execute", lambda p: service.execute(body.id, p))
+        return jobs.submit("execute", lambda p: service.execute(body.id, p), body.model_dump())
 
     @app.get("/api/runs")
     def runs():
@@ -152,11 +167,21 @@ def create_app(data_dir, demo=False, service=None, on_quit=None):
 
     @app.post("/api/restore")
     def restore(body: Plan):
-        return jobs.submit("restore", lambda p: service.restore(body.id, False, p))
+        return jobs.submit("restore", lambda p: service.restore(body.id, False, p), body.model_dump())
 
     @app.post("/api/recover")
     def recover(body: Plan):
-        return jobs.submit("recover", lambda p: service.restore(body.id, True, p))
+        return jobs.submit("recover", lambda p: service.restore(body.id, True, p), body.model_dump())
+
+    @app.get("/api/diagnostics/tasks")
+    def diagnostic_tasks():
+        return diagnostics.records()
+
+    @app.get("/api/diagnostics/export")
+    def export_diagnostics():
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        return Response(diagnostics.export(), media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="WeChatCleaner-diagnostics-{stamp}.zip"'})
 
     @app.get("/api/jobs/{identifier}")
     def job(identifier: str):

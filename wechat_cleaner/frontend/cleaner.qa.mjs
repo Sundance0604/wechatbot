@@ -67,6 +67,30 @@ try{
  await page.getByRole('button',{name:'核对并恢复'}).click();
  await page.getByText('已恢复',{exact:true}).waitFor();
  await page.screenshot({path:output+'backups.png',fullPage:true});
+ await page.getByRole('button',{name:'任务与诊断',exact:true}).click();
+ await page.getByRole('heading',{name:'把问题发生的位置，记录下来。'}).waitFor();
+ await page.locator('.diagnostic-item').first().waitFor();
+ const downloadEvent=page.waitForEvent('download');
+ await page.getByRole('button',{name:'导出诊断包',exact:true}).click();
+ const download=await downloadEvent;
+ await download.saveAs(output+'diagnostics.zip');
+ if(!(await fs.stat(output+'diagnostics.zip')).size)throw new Error('Diagnostic export must be nonempty');
+ await page.screenshot({path:output+'diagnostics.png',fullPage:true});
+ // Simulate a task failure in the browser only; the real backend stays synthetic.
+ const failure={id:'qa-failed',kind:'search',state:'failed',stage:'query_messages',started_at:new Date().toISOString(),ended_at:new Date().toISOString(),environment:{app_version:'0.3.0'},context:{keyword:'synthetic'},events:[],error:{code:'FTS_SCHEMA_UNSUPPORTED',message:'全文索引结构不在当前支持范围内。',signature:'qa-synthetic',location:{file:'cleaner/changes.py',line:69,function:'modify_copies'},frames:[]}};
+ await page.route('**/api/search',route=>route.fulfill({json:{id:failure.id,kind:'search',state:'running'}}));
+ await page.route('**/api/jobs/qa-failed',route=>route.fulfill({json:{...failure,message:failure.error.message,diagnostic:failure.error}}));
+ await page.route('**/api/diagnostics/tasks',async route=>{const response=await route.fetch();const value=await response.json();await route.fulfill({json:{...value,tasks:[failure,...value.tasks]}});});
+ await page.getByRole('button',{name:'记录清理',exact:true}).click();
+ await page.getByRole('button',{name:'查询消息',exact:true}).click();
+ await page.getByRole('button',{name:'查看诊断',exact:true}).click();
+ await page.getByText('代码位置：cleaner/changes.py:69 · modify_copies',{exact:true}).waitFor();
+ await page.screenshot({path:output+'diagnostic-error.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ const diagnosticOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
+ await page.screenshot({path:output+'diagnostics-mobile.png',fullPage:true});
+ await page.setViewportSize({width:1440,height:1080});
+ await page.unroute('**/api/search');await page.unroute('**/api/jobs/qa-failed');await page.unroute('**/api/diagnostics/tasks');
  await page.getByRole('button',{name:'使用说明',exact:true}).click();
  await page.getByRole('heading',{name:'几步操作，清楚地完成。'}).waitFor();
  await page.getByRole('button',{name:'记录清理',exact:true}).click();
@@ -75,8 +99,8 @@ try{
  await page.setViewportSize({width:390,height:844});
  await page.screenshot({path:output+'mobile.png',fullPage:true});
  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
- const report={flow:'connect → contacts/groups select-all → mixed preview → messages select-all → prepare → delete → restore',contactSelectAll:true,groupSelectAll:true,messageSelectAll:true,partialSelection:true,filteredScope:true,browserErrors:errors,mobileHorizontalOverflow:overflow};
+ const report={flow:'connect → contacts/groups select-all → mixed preview → messages select-all → prepare → delete → restore',contactSelectAll:true,groupSelectAll:true,messageSelectAll:true,partialSelection:true,filteredScope:true,diagnosticsExport:true,errorLocation:true,browserErrors:errors,mobileHorizontalOverflow:overflow||diagnosticOverflow};
  await fs.writeFile(output+'report.json',JSON.stringify(report,null,2));
  console.log(JSON.stringify(report));
- if(errors.length||overflow)process.exitCode=1;
+ if(errors.length||overflow||diagnosticOverflow)process.exitCode=1;
 }finally{await browser.close();}

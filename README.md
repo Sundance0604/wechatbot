@@ -4,7 +4,7 @@
 
 | 项目 | 做什么 | 实现路径 | 当前边界 |
 | --- | --- | --- | --- |
-| [清简 · wechat_cleaner](wechat_cleaner/) | 联系人/群聊关键词查询、预览、全选、备份、离线删除及恢复 | 独立 React 面板 + 本机 Python 服务 + 加密数据库写回 | 0.2.1 实验版；历史纯文本，存在版本及状态限制 |
+| [清简 · wechat_cleaner](wechat_cleaner/) | 联系人/群聊关键词查询、全选、离线清理恢复、任务诊断导出 | 独立 React 面板 + 本机 Python 服务 + 加密数据库写回 | 0.3.0 实验版；历史纯文本，存在版本及状态限制 |
 | [wechat_message_cleanup](wechat_message_cleanup/) | 关键词扫描、离线副本删除、受限写回实验 | 数据库解密 → SQL 删除 → FTS 索引维护 → 重加密 → 退出微信后替换指定文件 | 写回仍保留原实验的严格样本限制，不是通用清理器 |
 | [violet_wechat](violet_wechat/) | 群聊/私聊 AI 对话、管理员微信命令、Codex 工作区任务 | 只读聊天库 + 微信进程内原生文本发送 | 原生发送仅适配指定的 Windows 微信 4.2.0.11 / 4.2.0.13 模块指纹 |
 
@@ -30,9 +30,11 @@ copy config.example.json config.local.json
 
 打开 <http://127.0.0.1:8766>，填写自己的模型连接、监听会话和管理员身份。开始监听是单独的操作。若原生连接尚未初始化，先在微信手动发一条普通文字，再在面板重新连接发送。没有配置任何真实账号、群或 API Key。
 
-## 清简：独立清理应用 0.2.1
+## 清简：独立清理应用 0.3.0
 
-**[下载 Windows 实验版 exe / 发行包](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.1-alpha.1)** · **[使用与构建说明](wechat_cleaner/README.md)**
+**[下载 Windows 实验版 exe / 发行包](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.3.0-alpha.1)** · **[使用与构建说明](wechat_cleaner/README.md)**
+
+新增「任务与诊断」：记录执行阶段、报错位置与全文索引结构，一键导出诊断 ZIP；真实路径及任务上下文会包含在内，方便汇总不同电脑的异常。
 
 - 联系人私聊与群聊可混合选择；两类各有全选、清空和搜索结果选择。
 - 输入删除词和日期范围，预览发送者、时间、正文，再逐条核对。聊天记录全选仅包含当前预览中可清理的消息。
