@@ -6,13 +6,15 @@ from pathlib import Path
 import os
 import sys
 import tempfile
+import struct
 
 import apsw
 import zstandard
 
 from .database import authenticated_decrypt, encrypt_snapshot, open_fts
-from .files import save
+from .files import CleanupError, save
 from .upstream import get_upstream
+from .wal import header_checksum, inspect_inactive_wal
 
 
 def run_selftest(root):
@@ -44,10 +46,25 @@ def run_selftest(root):
             assert authenticated_decrypt(encrypted,key,mac_key,upstream) == plain
             compressed = zstandard.ZstdCompressor().compress(b"synthetic text")
             assert zstandard.ZstdDecompressor().decompress(compressed) == b"synthetic text"
+            salt = b"current!"
+            prefix = struct.pack(">IIII", 0x377F0682, 3007000, 4096, 1) + salt
+            header = prefix + struct.pack(">II", *header_checksum(prefix, 0x377F0682))
+            wal = Path(temporary) / "padding.db-wal"
+            stale = struct.pack(">II", 1, 1) + b"previous" + bytes(8) + b"x" * 4096
+            wal.write_bytes(header + stale + bytes(4040))
+            assert inspect_inactive_wal(wal)["state"] == "stale_generation"
+            wal.write_bytes(header + struct.pack(">II", 1, 1) + salt + bytes(8) + b"x" * 4096 + bytes(4040))
+            try:
+                inspect_inactive_wal(wal)
+            except CleanupError:
+                pass
+            else:
+                raise AssertionError("Current WAL must remain blocked")
             forbidden = [name for name in sys.modules if name.split('.')[0] in {"frida","violet","internship_agent","wechatauto"}]
             assert not forbidden
             report.update(status="passed", aes_hmac_roundtrip=True, fts_delete_integrity=True,
-                          zstandard=True, isolated_database_reader=True, forbidden_modules_loaded=forbidden)
+                          zstandard=True, isolated_database_reader=True, forbidden_modules_loaded=forbidden,
+                          inactive_wal_padding=True, current_wal_blocked=True)
     except Exception as error:
         report["error"] = type(error).__name__
         raise

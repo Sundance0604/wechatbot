@@ -194,7 +194,9 @@ def test_current_generation_wal_and_hot_journal_block_writeback(environment):
     from cleaner.upstream import get_upstream
     upstream = get_upstream()
     salt = os.urandom(8)
-    header = struct.pack(">IIII",0x377f0682,3007000,4096,0) + salt + bytes(8)
+    from cleaner.wal import header_checksum
+    prefix = struct.pack(">IIII",0x377f0682,3007000,4096,0) + salt
+    header = prefix + struct.pack(">II", *header_checksum(prefix, 0x377f0682))
     frame = struct.pack(">II",1,1) + salt + bytes(8) + bytes(4096)
     wal = source / "message/message_0.db-wal"
     wal.write_bytes(header + frame)
@@ -286,3 +288,42 @@ def test_foreign_contacts_and_conflicting_selection_fields_are_rejected(environm
         service.search({"conversation_ids": ["wxid_not_in_account"], "keyword": "草"})
     with pytest.raises(CleanupError):
         service.search({"conversation_ids": [group], "group_ids": [other], "keyword": "草"})
+
+
+def test_padded_stale_wal_is_backed_up_and_restored_exactly(environment):
+    import struct
+    from cleaner.wal import header_checksum
+    service, source, *_ = environment
+    current, old = b"current!", b"previous"
+    prefix = struct.pack(">IIII", 0x377F0682, 3007000, 4096, 1) + current
+    header = prefix + struct.pack(">II", *header_checksum(prefix, 0x377F0682))
+    stale = struct.pack(">II", 1, 1) + old + bytes(8) + b"x" * 4096
+    wal = source / "message/message_0.db-wal"
+    wal.write_bytes(header + stale + bytes(4040))
+    assert wal.stat().st_size == 8192
+    baseline = hashes(source)
+    info = prepared(environment)
+    run = service.journal.root / info["id"]
+    plan = read(run / "plan.json")
+    assert plan["wal_checks"]["message/message_0.db"]["state"] == "stale_generation"
+    assert hashes(source) == baseline
+    service.execute(info["id"])
+    assert not wal.exists()
+    service.restore(info["id"])
+    assert hashes(source) == baseline
+
+
+def test_current_wal_with_padding_is_never_installed(environment):
+    import struct
+    from cleaner.wal import header_checksum
+    service, source, *_ = environment
+    result, ids = scan(environment)
+    salt = b"current!"
+    prefix = struct.pack(">IIII", 0x377F0682, 3007000, 4096, 1) + salt
+    frame = struct.pack(">II", 1, 1) + salt + bytes(8) + b"x" * 4096
+    wal = source / "message/message_0.db-wal"
+    wal.write_bytes(prefix + struct.pack(">II", *header_checksum(prefix, 0x377F0682)) + frame + bytes(4040))
+    baseline = hashes(source)
+    with pytest.raises(CleanupError, match="当前世代"):
+        service.prepare(result["scan_id"], ids)
+    assert hashes(source) == baseline

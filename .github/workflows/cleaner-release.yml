@@ -78,7 +78,8 @@ jobs:
           (root/'dist/SHA256SUMS.txt').write_text(checksum+'  WeChatCleaner.exe\n'+hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n',encoding='utf-8')
           (root/'.build/release-notes.md').write_text(
               '# 清简 '+__version__+' 实验版\n\n'
-              '新增联系人私聊，可与群聊混合查询和清理。联系人、群聊及当前预览可清理记录分别支持全选。\n\n'
+              '修复 WAL 长度检查误报：验证日志头及有效帧前缀后，允许已确认的旧日志或空白预留尾部。当前写入与无法识别的片段仍停止处理。\n\n'
+              '保留联系人、群聊及当前预览可清理记录的全选与恢复功能。\n\n'
               'Windows x64，双击 exe 自动打开本机面板，无需 Python 或 Node。仅支持已适配微信版本的普通历史纯文本。\n\n'
               '已运行合成加密库测试、打包诊断及浏览器流程验证；未操作真实账号，实际写回后的客户端验收仍待完成。\n\n'
               '运行前先退出旧版清简；登录微信连接、查询预览后，再按提示退出微信、备份并确认删除。\n',encoding='utf-8')

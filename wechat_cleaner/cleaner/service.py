@@ -108,7 +108,7 @@ class CleanerService:
                 progress(35, "备份校验完成，正在重新核对候选消息")
                 relatives = sorted({"session/session.db", "message/message_resource.db", "message/message_fts.db"}
                                    | {item["shard"] for item in targets})
-                self.reader.decode_backup(run / "backup", run / "plain", relatives)
+                plan["wal_checks"] = self.reader.decode_backup(run / "backup", run / "plain", relatives)
                 validate_targets(SnapshotReader(run / "plain", self.reader), targets)
                 progress(55, "正在副本中更新消息正文和全文索引")
                 changed = modify_copies(run / "plain", run / "modified", targets)

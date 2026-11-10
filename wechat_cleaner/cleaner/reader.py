@@ -5,13 +5,13 @@ from pathlib import Path
 import re
 import sqlite3
 import tempfile
-import struct
 import uuid
 
 from .database import open_readonly
 from .database import authenticated_decrypt
 from .files import CleanupError, process_status, safe_path
 from .upstream import get_upstream
+from .wal import inspect_inactive_wal
 
 SUPPORTED_VERSIONS = {"4.2.0.11", "4.2.0.13"}
 
@@ -59,24 +59,7 @@ def require_checkpointed(source, upstream):
     journal = Path(str(source) + "-journal")
     if journal.exists() and journal.stat().st_size:
         raise CleanupError("微信还有待恢复的数据库日志，请重新打开并正常退出微信后重试。")
-    wal = Path(str(source) + "-wal")
-    if not wal.exists() or wal.stat().st_size <= upstream.WeChatDB.WAL_HEADER_SZ:
-        return
-    with wal.open("rb") as stream:
-        header = stream.read(upstream.WeChatDB.WAL_HEADER_SZ)
-        magic, version, page_size = struct.unpack(">III", header[:12])
-        if magic not in (0x377f0682, 0x377f0683) or version != 3007000 or page_size != upstream.PAGE_SZ:
-            raise CleanupError("写入日志格式不受支持，请保留备份后检查微信版本。")
-        generation = header[16:24]
-        frame_size = upstream.WeChatDB.WAL_FRAME_SZ
-        if (wal.stat().st_size - len(header)) % frame_size:
-            raise CleanupError("写入日志存在不完整帧，请重新打开并正常退出微信后重试。")
-        for _ in range((wal.stat().st_size - len(header)) // frame_size):
-            frame = stream.read(frame_size)
-            if frame[8:16] == generation and struct.unpack(">I", frame[:4])[0]:
-                # The experimental reader does not validate committed WAL frame
-                # checksums. Never use that merger for production writeback.
-                raise CleanupError("微信仍有尚未归并的写入日志。请重新打开并正常退出微信后重试；本次备份已保留。")
+    return inspect_inactive_wal(Path(str(source) + "-wal"), upstream.PAGE_SZ)
 
 
 class LocalReader:
@@ -140,6 +123,7 @@ class LocalReader:
                 "group_count": len(self.groups()), "contact_count": len(self.people())}
 
     def decode_backup(self, raw, plain, relatives):
+        checks = {}
         for relative in relatives:
             output = safe_path(plain, relative)
             output.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +132,7 @@ class LocalReader:
                 raise CleanupError(f"数据库没有可用密钥：{relative}")
             source = safe_path(raw, relative)
             upstream = get_upstream()
-            require_checkpointed(source, upstream)
+            checks[relative] = require_checkpointed(source, upstream)
             encrypted = source.read_bytes()
             if len(key) != 32 or not upstream._verify_enc_key(key, encrypted[:upstream.PAGE_SZ]):
                 raise CleanupError("数据库密钥格式不受支持或已失效，请重新连接微信。")
@@ -156,6 +140,7 @@ class LocalReader:
             output.write_bytes(authenticated_decrypt(encrypted, key, mac_key, upstream))
             if not physical_check(output):
                 raise CleanupError(f"备份解密后完整性检查未通过：{relative}")
+        return checks
 
 
 class SnapshotReader:

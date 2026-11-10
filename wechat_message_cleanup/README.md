@@ -1,8 +1,8 @@
 # 微信消息清理板块：独立应用与底层研究
 
-面向操作的新版入口：**[清简 0.2：联系人、群聊和聊天记录全选](../wechat_cleaner/README.md)**。
+面向操作的新版入口：**[清简 0.2.1：联系人、群聊和聊天记录全选](../wechat_cleaner/README.md)**。
 
-下载 **[Windows 实验版](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.0-alpha.1)**，双击 exe 后按面板提示查询、预览、退出微信、备份并确认删除。独立应用不依赖邮件或 Hook 机器人。
+下载 **[Windows 实验版](https://github.com/Sundance0604/wechatbot/releases/tag/cleaner-v0.2.1-alpha.1)**，双击 exe 后按面板提示查询、预览、退出微信、备份并确认删除。独立应用不依赖邮件或 Hook 机器人。
 
 以下内容保留原始受限研究脚本的说明；其中固定关键词、两条消息和固定分片的限制仅属于旧脚本，不是新版面板的输入限制。新版仍限制消息类型、状态、版本和加密格式，并在不能核验时停止。
 
