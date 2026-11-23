@@ -142,9 +142,9 @@ def test_control_delivery_is_not_muted_or_charged_as_chitchat(setup):
     assert engine.policy.capacity(group)['used_messages']==0
 
 
-@pytest.mark.parametrize('text',['friend_c，原神好玩还是鸣潮好玩','@其他群友 你好','friend_b，这周末回来吗'])
+@pytest.mark.parametrize('text',['lsw，原神好玩还是鸣潮好玩','@其他群友 你好','dzc，这周末回来吗'])
 def test_named_other_person_is_dropped_before_model_call(setup,text):
-    engine,_,_=setup;group=engine.config.value.groups[0];group.other_names=['friend_c','friend_b']
+    engine,_,_=setup;group=engine.config.value.groups[0];group.other_names=['lsw','dzc']
     assert asyncio.run(engine.generate(group,[message(text=text)]))==[]
     assert not engine.provider.calls
 
@@ -167,7 +167,7 @@ def test_human_dialogue_reaches_decision_stage_with_context_but_no_reply_when_no
     assert len(engine.provider.calls)==1
 
 
-@pytest.mark.parametrize('text',['你先安静一下','@GPT小姐 别说话','让你别接，为什么还回复','我都没问你，你回复什么','别抢答了'])
+@pytest.mark.parametrize('text',['你先安静一下','@VioletBot 别说话','让你别接，为什么还回复','我都没问你，你回复什么','别抢答了'])
 def test_quiet_requests_persist_without_an_acknowledgement(setup,tmp_path,text):
     engine,store,clock=setup;group=engine.config.value.groups[0];source=message(text=text)
     assert asyncio.run(engine.generate(group,[source]))==[]
@@ -343,7 +343,7 @@ def test_actual_wechat_alias_after_bot_rename_is_a_mandatory_direct_invitation(s
 @pytest.mark.parametrize('command',['不接','闭嘴','这句别接','@VioletBot\u2005别回了'])
 def test_quiet_commands_mute_for_two_minutes_without_reply_but_new_at_still_works(setup,command):
     engine,store,clock=setup;group=engine.config.value.groups[0]
-    engine.config.value.mentions=['VioletBot','GPT小姐']
+    engine.config.value.mentions=['VioletBot']
     assert asyncio.run(engine.generate(group,[message(text=command)]))==[]
     assert store.policy(group.id)['quiet_until']==clock[0]+120
     assert not engine.provider.calls
@@ -359,7 +359,7 @@ def test_direct_invitation_bypasses_cooldown_and_budget_without_charging_proacti
     old,_=queued(engine,store)
     store.update_outgoing(old['id'],'sent',123,confirmed_at=clock[0])
     assert not engine.policy.capacity(group)['allowed']
-    result=asyncio.run(engine.generate(group,[message(2,'@GPT小姐 请回答')]))
+    result=asyncio.run(engine.generate(group,[message(2,'@VioletBot 请回答')]))
     assert result==['实际回答']
     metadata=engine.reply_plans[group.id]
     store.reserve(group.id,[message(2)],result,{},metadata=metadata)
@@ -369,9 +369,9 @@ def test_direct_invitation_bypasses_cooldown_and_budget_without_charging_proacti
 
 def test_new_at_after_quiet_in_same_batch_replies_but_later_quiet_revokes_old_at(setup):
     engine,_,_=setup;group=engine.config.value.groups[0]
-    assert asyncio.run(engine.generate(group,[message(text='闭嘴'),message(2,'@GPT小姐 你好')]))==['实际回答']
+    assert asyncio.run(engine.generate(group,[message(text='闭嘴'),message(2,'@VioletBot 你好')]))==['实际回答']
     engine.provider.calls=[]
-    assert asyncio.run(engine.generate(group,[message(3,'@GPT小姐 你好'),message(4,'闭嘴')]))==[]
+    assert asyncio.run(engine.generate(group,[message(3,'@VioletBot 你好'),message(4,'闭嘴')]))==[]
     assert not engine.provider.calls
 
 
@@ -381,19 +381,19 @@ def test_direct_invitation_has_fallback_if_model_declines_or_fails(setup):
     class Declined(Provider):
         async def respond(self,*args,**kwargs):return Reply(should_reply=False)
     engine.provider=Declined()
-    assert asyncio.run(engine.generate(group,[message(text='@GPT小姐 你好')]))
+    assert asyncio.run(engine.generate(group,[message(text='@VioletBot 你好')]))
     class Failed(Provider):
         async def respond(self,*args,**kwargs):raise DeepSeekError('模型暂时不可用')
     engine.provider=Failed()
-    assert '没答出来' in asyncio.run(engine.generate(group,[message(2,'@GPT小姐 你好')]))[0]
+    assert '没答出来' in asyncio.run(engine.generate(group,[message(2,'@VioletBot 你好')]))[0]
 
 
 def test_direct_reply_during_quiet_is_not_vetoed_by_unrelated_new_chatter(setup):
     engine,store,_=setup;group=engine.config.value.groups[0]
     engine.policy.quiet(group,'安静中')
-    delivery,_=queued(engine,store,source=message(text='@GPT小姐 你是谁'))
+    delivery,_=queued(engine,store,source=message(text='@VioletBot 你是谁'))
     meta=store.chat_meta(delivery['id']);meta['direct_invitation']=True;store.update_chat_meta(delivery['id'],meta)
-    engine.bridge=Bridge([message(text='@GPT小姐 你是谁'),message(2,'其他人在聊别的')]);engine.sender=Native()
+    engine.bridge=Bridge([message(text='@VioletBot 你是谁'),message(2,'其他人在聊别的')]);engine.sender=Native()
     asyncio.run(engine.deliver(delivery))
     assert engine.sender.sent==['旧回答'] and not engine.provider.calls
     assert engine.policy.capacity(group)['used_messages']==0

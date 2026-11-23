@@ -1,0 +1,19 @@
+Violet 0.8.1 bundles Python 3.11 and third-party runtime components.
+
+The executable contains, among other dependencies: FastAPI, Starlette, Uvicorn,
+HTTPX, Pydantic, psutil, Frida, wechatauto-replica 1.2.1 (database module only),
+cryptography, zstandard, tzdata, certifi, h11, AnyIO, and their dependencies.
+Their original license and notice files are included under licenses/ inside the
+PyInstaller bundle. A dependency manifest accompanies the release archive.
+
+Frida is distributed under the wxWindows Library Licence, Version 3.1.
+The database reader from wechatauto-replica is distributed under Apache-2.0.
+PyInstaller's bootloader is distributed under its bootloader exception.
+Python is distributed under the Python Software Foundation License.
+
+WeChat, DeepSeek Harness, and Codex are not bundled. They remain separate
+products installed and configured by the recipient. This is an unofficial
+local tool and is not affiliated with Tencent, DeepSeek, or OpenAI.
+
+No personal API key, account configuration, chat records, group memory,
+owner profile, project data, or user session is included in this release.

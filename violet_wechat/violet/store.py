@@ -32,6 +32,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS agent_approvals(id TEXT PRIMARY KEY,job_id TEXT,kind TEXT,details TEXT,status TEXT,created REAL);
             CREATE TABLE IF NOT EXISTS agent_workspace_snapshots(job_id TEXT PRIMARY KEY,body TEXT);
             CREATE TABLE IF NOT EXISTS agent_context_snapshots(job_id TEXT PRIMARY KEY,body TEXT);
+            CREATE TABLE IF NOT EXISTS agent_backends(job_id TEXT PRIMARY KEY,backend TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS command_batches(id TEXT PRIMARY KEY,source_group TEXT,owner TEXT,
                 description TEXT,created REAL);
             CREATE TABLE IF NOT EXISTS command_items(id TEXT PRIMARY KEY,batch_id TEXT);
@@ -186,7 +187,7 @@ class Store:
 
     def job(self,identifier):
         with self.lock:
-            row = self.db.execute('SELECT * FROM agent_jobs WHERE id=?',(identifier,)).fetchone()
+            row = self.db.execute("SELECT j.*,COALESCE(b.backend,'codex') AS backend FROM agent_jobs j LEFT JOIN agent_backends b ON b.job_id=j.id WHERE j.id=?",(identifier,)).fetchone()
             if not row:return None
             snapshot=self.db.execute('SELECT body FROM agent_workspace_snapshots WHERE job_id=?',(identifier,)).fetchone()
             return {**dict(row),'workspace_config':json.loads(snapshot[0]) if snapshot else None}
@@ -202,18 +203,19 @@ class Store:
 
     def jobs(self,limit=100):
         with self.lock:
-            return [dict(row) for row in self.db.execute('SELECT * FROM agent_jobs ORDER BY created DESC LIMIT ?',(limit,))]
+            return [dict(row) for row in self.db.execute("SELECT j.*,COALESCE(b.backend,'codex') AS backend FROM agent_jobs j LEFT JOIN agent_backends b ON b.job_id=j.id ORDER BY j.created DESC LIMIT ?",(limit,))]
 
     def recover_agent_jobs(self):
         with self.lock,self.db:
             self.db.execute("UPDATE agent_jobs SET status='interrupted',error='服务已重启；任务未自动重做。',updated=? WHERE status IN ('queued','running','awaiting_approval')",(time.time(),))
 
-    def create_job(self,identifier,workspace,owner,source,prompt,session_key,workspace_config=None):
+    def create_job(self,identifier,workspace,owner,source,prompt,session_key,workspace_config=None,backend='codex'):
         with self.lock,self.db:
             created=self.db.execute('INSERT OR IGNORE INTO agent_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (identifier,workspace,owner,source,prompt,'queued','','',time.time(),time.time(),None,None,session_key,0)).rowcount==1
             if created and workspace_config is not None:
                 self.db.execute('INSERT INTO agent_workspace_snapshots VALUES(?,?)',(identifier,json.dumps(workspace_config,ensure_ascii=False)))
+            if created:self.db.execute('INSERT INTO agent_backends VALUES(?,?)',(identifier,backend))
             return created
 
     def update_job(self,identifier,**fields):

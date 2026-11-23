@@ -197,6 +197,9 @@ class Engine:
         if delivery['id'].startswith('agent_send_'):
             job=self.store.job(delivery['id'].split('_')[2])
             if not job or job['status'] in ['cancelled','failed','interrupted','completed']:return False
+        if delivery['id'].startswith('agent_result_'):
+            job=self.store.job(delivery['id'].split('_')[2])
+            if not job or not self.agent_result_access(job):return False
         return True
 
     async def enable_group(self,group_id,enabled):
@@ -602,7 +605,7 @@ class Engine:
         await self.observe_conversation(group,batch)
         paused = self.store.groups()[group.id]['paused']
         for message in batch:
-            if message['sender'] in self.command_admin_ids and message['type']=='文本':
+            if message['type']=='文本' and (message['sender'] in self.command_admin_ids or re.match(r'^/deepseek(?:-new)?(?:\s|$)',self.strip_mention(message['text'],group.id))):
                 result = await self.admin(message)
                 if result is not None:
                     # Return an operation acknowledgement only for this message; preserve other arrivals.
@@ -756,9 +759,12 @@ class Engine:
         return fitting
 
     async def admin(self,message):
+        text = self.strip_mention(message['text'],message['group'])
+        if re.match(r'^/deepseek(?:-new)?(?:\s|$)',text):
+            if message['is_self'] or message['type']!='文本':return None
+            return await self.deepseek_command(message,text)
         if message['sender'] not in self.command_admin_ids or message['is_self'] or message['type']!='文本':
             return None
-        text = self.strip_mention(message['text'],message['group'])
         command = bool(re.match(r'^/command(?:\s|$)',text))
         # This check precedes cached plans and natural-language interpretation, including after a demotion.
         if message['sender'] not in self.admin_ids and not command:
@@ -904,6 +910,38 @@ class Engine:
         result = '\n\n'.join(results) if results else None
         self.store.finish_admin_turn(turn_key,result)
         return result
+
+    async def deepseek_command(self,message,text):
+        settings=self.config.value
+        workspaces=[w for w in settings.workspaces if settings.project_access(w,message['sender'],message['group'])]
+        if not workspaces:return '本群或你的账号尚未获得项目经理权限；请让账号主人在工作区设置中绑定本群。'
+        if not self.agent_manager:return 'Agent 引擎尚未启动。'
+        body=text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1))>1 else ''
+        if body in {'','帮助','help'}:
+            return '项目经理可用：/deepseek 工作区 任务内容；/deepseek-new 工作区 任务内容；/deepseek 状态 [任务编号]；/deepseek 取消 任务编号。\n本群工作区：'+ '、'.join(w.id for w in workspaces)+'。Agent 按主人配置的工作区权限执行。'
+        tokens=body.split(maxsplit=1)
+        if tokens[0] in {'状态','取消'}:
+            identifier=tokens[1].lstrip('#').strip() if len(tokens)>1 else None
+            if tokens[0]=='取消' and not identifier:return '请使用：/deepseek 取消 任务编号。'
+            jobs=[j for j in self.store.jobs() if j['backend']=='deepseek' and j['owner']==message['sender']
+                  and j['source_group']==message['group'] and j['workspace_id'] in {w.id for w in workspaces}]
+            job=next((j for j in jobs if j['id']==identifier),None) if identifier else next(iter(jobs),None)
+            if not job:return '没有找到你在本群提交的 DeepSeek 任务。'
+            if tokens[0]=='取消':
+                await self.agent_manager.cancel(job['id'])
+                return f'任务 #{job["id"]} 已取消。'
+            labels={'queued':'排队中','running':'执行中','awaiting_approval':'等待面板确认','completed':'已完成','failed':'未完成','cancelled':'已取消','interrupted':'已中断'}
+            return f'DeepSeek 任务 #{job["id"]}：{labels.get(job["status"],job["status"])}。\n'+short(job['result'] or job['error'] or '详细进度见控制面板。')
+        match=re.match(r'^(?:"([^"]+)"|(\S+))\s+([\s\S]+)$',body)
+        if not match:return '请使用：/deepseek 工作区别名 任务内容。'
+        workspace=match[1] or match[2]
+        identifier=hashlib.sha256((key(message)+':deepseek').encode()).hexdigest()[:12]
+        try:
+            context=await self.agent_source_context(message)
+            job=await self.agent_manager.submit(workspace,match[3],owner=message['sender'],source=message['group'],
+                identifier=identifier,new_session=text.startswith('/deepseek-new'),source_context=context,backend='deepseek')
+        except ValueError as exc:return str(exc)
+        return f'已创建 DeepSeek 任务 #{job["id"]}，工作区：{workspace}。结果回到本群；/deepseek 状态 {job["id"]} 可查看进度。'
 
     async def agent_command(self,message,text):
         if message['sender'] not in self.admin_ids or message.get('is_self') or message.get('type')!='文本':
@@ -1085,13 +1123,22 @@ class Engine:
     async def agent_finished(self,job):
         if not job or not job['source_group'] or job['status'] not in ['completed','failed'] or job['notification']:
             return
-        if job['owner'] not in self.admin_ids or not self.allowed(job['source_group']):return
-        text=f'Codex 任务 #{job["id"]} '+('已完成' if job['status']=='completed' else '未完成')+'：\n'+(job['result'] or job['error'])
+        if not self.agent_result_access(job) or not self.allowed(job['source_group']):return
+        label='DeepSeek' if job.get('backend')=='deepseek' else 'Codex'
+        text=f'{label} 任务 #{job["id"]} '+('已完成' if job['status']=='completed' else '未完成')+'：\n'+(job['result'] or job['error'])
+        secret=self.config.value.api_key.get_secret_value()
+        if secret:text=text.replace(secret,'[已隐藏密钥]')
         baseline=await asyncio.to_thread(self.bridge.positions,job['source_group'])
         if not self.allowed(job['source_group']):return
         for index,part in enumerate(parts(text,self.config.value.max_replies)):
             self.store.reserve_direct(f'agent_result_{job["id"]}_{index}',job['source_group'],job['source_group'],part,baseline)
         self.store.update_job(job['id'],notification=1)
+
+    def agent_result_access(self,job):
+        if job.get('backend')!='deepseek':return job['owner'] in self.admin_ids
+        if not self.config.value.agent.enabled or not self.config.value.agent.deepseek_enabled:return False
+        workspace=next((w for w in self.config.value.workspaces if w.id==job['workspace_id']),None)
+        return bool(workspace and self.config.value.project_access(workspace,job['owner'],job['source_group']))
 
     async def perform(self,action,identifier,source):
         settings = self.config.value

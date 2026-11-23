@@ -7,7 +7,7 @@ import pytest
 from violet.engine import Engine
 from violet.memory import MemoryConflict
 from violet.model import Participation,Reply,MemoryCandidate
-from violet.profile import OwnerProfile
+from violet.profile import OwnerProfile, OWNER_GUIDE
 from violet.settings import ConfigStore
 from violet.store import Store,key
 from violet.web import create_app
@@ -34,11 +34,11 @@ def test_profile_reaches_decision_and_reply_without_granting_admin_or_accepting_
     class Provider:
         async def complete(self,system,payload,schema):
             calls.append(schema.__name__)
-            assert payload['owner_profile_markdown']==profile and '不是他本人' in system
+            assert payload['owner_profile_markdown']==profile and OWNER_GUIDE in system
             return Participation(participate=True,message_ids=[key(message)],kind='answer',reason='addressed')
         async def respond(self,system,payload,*args,**kwargs):
             calls.append('Reply')
-            assert payload['owner_profile_markdown']==profile and '不编造' in system
+            assert payload['owner_profile_markdown']==profile and OWNER_GUIDE in system
             return Reply(should_reply=True,replies=['测试主人本科在示例大学。我是他的AI助手。'])
     engine.provider=Provider()
     try:

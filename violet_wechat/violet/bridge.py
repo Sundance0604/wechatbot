@@ -34,7 +34,8 @@ def resolve_contact(contacts,query,admin=False):
 class Bridge:
     def __init__(self,settings,runtime):
         # Imported lazily so model/panel/tests do not require a running WeChat client.
-        from wechatauto import WeChatDB
+        from .reader import database_reader
+        WeChatDB=database_reader().WeChatDB
         class DB(WeChatDB):
             def _find_weixin_pids(self):
                 return [p.pid for p in psutil.process_iter(['name']) if (p.info['name'] or '').lower()=='weixin.exe']

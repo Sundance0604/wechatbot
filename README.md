@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | [清简 · wechat_cleaner](wechat_cleaner/) | 联系人/群聊关键词查询、全选、离线清理恢复、任务诊断导出 | 独立 React 面板 + 本机 Python 服务 + 加密数据库写回 | 0.3.0 实验版；历史纯文本，存在版本及状态限制 |
 | [wechat_message_cleanup](wechat_message_cleanup/) | 关键词扫描、离线副本删除、受限写回实验 | 数据库解密 → SQL 删除 → FTS 索引维护 → 重加密 → 退出微信后替换指定文件 | 写回仍保留原实验的严格样本限制，不是通用清理器 |
-| [violet_wechat](violet_wechat/) | 群聊/私聊 AI 对话、管理员微信命令、Codex 工作区任务 | 只读聊天库 + 微信进程内原生文本发送 | 原生发送仅适配指定的 Windows 微信 4.2.0.11 / 4.2.0.13 模块指纹 |
+| [violet_wechat](violet_wechat/) | 群聊/私聊 AI 对话、管理员微信命令、Codex 工作区任务 | 只读聊天库 + 微信进程内原生文本发送 | Violet 0.8.1；适配指定的 Windows 微信 4.2.0.11 / .13 / .52 / .53 模块指纹 |
 
 ## 两份技术文档
 
@@ -16,6 +16,10 @@
 2. **[Violet 消息 bot：只读监听、原生 Hook 发送与 Agent 权限](docs/02-violet-bot-internals.md)**
 
 推荐先读每份文档的“能力边界”，再沿源码阅读。微信升级后不能只改版本号继续使用旧函数地址。
+
+## Violet Windows 下载
+
+[Violet 0.8.1 发布包](https://github.com/Sundance0604/wechatbot/releases/tag/violet-v0.8.1)：Windows x64，解压后双击，无需 Python。首次默认无账号、监听群或个人资料，称呼为 VioletBot、人设留空；自行填写 Key 并连接自己的微信。使用前先退出旧版。项目 Agent 需另外安装 Codex 或 DeepSeek Harness。
 
 ## Violet 快速启动
 

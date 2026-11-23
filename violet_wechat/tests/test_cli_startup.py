@@ -21,7 +21,8 @@ from violet.cli import main
 def hold(app,**kwargs):
     (RUNTIME/'ready').write_text('ready')
     sys.stdin.readline()
-sys.modules['uvicorn']=types.SimpleNamespace(run=hold)
+import uvicorn
+uvicorn.Server.run=lambda self:hold(self.config.app)
 sys.modules['violet.web']=types.SimpleNamespace(create_app=lambda **kwargs:None)
 sys.argv=['violet']
 main()

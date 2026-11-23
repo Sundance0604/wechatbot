@@ -171,24 +171,34 @@ class AgentManager:
         workspace.path=str(path)
         return workspace
 
-    async def submit(self,workspace,prompt,owner='@panel',source='',identifier=None,new_session=False,parent=None,source_context=None):
+    async def submit(self,workspace,prompt,owner='@panel',source='',identifier=None,new_session=False,parent=None,source_context=None,backend='codex'):
         if not self.config.value.agent.enabled:raise ValueError('Agent 引擎已关闭。')
         if len(self.tasks)>=100:raise ValueError('任务队列已满，请先等待或取消部分任务。')
         if not 1<=len(prompt.strip())<=20000:raise ValueError('任务内容需要1–20000字。')
+        secret=self.config.value.api_key.get_secret_value()
+        if secret and secret in prompt:raise ValueError('任务包含本机 API Key，未提交。')
         ws=self.workspace(workspace)
-        codex_binary(self.config.value.agent.codex_path)
+        if backend not in {'codex','deepseek'}:raise ValueError('未知 Agent 引擎。')
+        if backend=='deepseek':
+            from .deepseek_agent import harness_command
+            if not self.config.value.agent.deepseek_enabled:raise ValueError('DeepSeek Agent 尚未启用，请先在工作区设置中配置。')
+            if source and not self.config.value.project_access(ws,owner,source):raise ValueError('本群或该成员尚未获得此工作区的项目经理权限。')
+            if not self.config.value.api_key.get_secret_value():raise ValueError('请先配置 DeepSeek API Key。')
+            harness_command(self.config.value.agent.deepseek_path)
+        else:codex_binary(self.config.value.agent.codex_path)
         identifier=identifier or uuid.uuid4().hex[:12]
         if not re.fullmatch(r'[a-zA-Z0-9-]{1,64}',identifier):raise ValueError('任务标识格式有误。')
         if source_context is not None and (source_context.get('group_id')!=source or source_context.get('requester_id')!=owner):
             raise ValueError('来源群上下文与操作者不匹配。')
         existing=self.store.job(identifier)
         if existing:
-            if (existing['workspace_id'],existing['owner'],existing['source_group'])!=(ws.id,owner,source):raise ValueError('任务标识冲突。')
+            if (existing['workspace_id'],existing['owner'],existing['source_group'],existing['backend'])!=(ws.id,owner,source,backend):raise ValueError('任务标识冲突。')
             return existing
         policy=json.dumps(ws.model_dump(),sort_keys=True,ensure_ascii=False)
         group_policy=next((g.model_dump() for g in self.config.value.groups if g.id==source),None)
         scope=json.dumps({'context_protocol':'source-conversation-v2','group':group_policy},sort_keys=True,ensure_ascii=False)
         session=hashlib.sha256(f'{policy}\n{scope}\n{owner}\n{source}'.encode()).hexdigest()
+        if backend=='deepseek':session=hashlib.sha256((session+'deepseek-v1:'+self.config.value.agent.deepseek_model).encode()).hexdigest()
         if new_session:session=uuid.uuid4().hex
         if parent:
             if new_session:raise ValueError('续接任务不能同时选择全新会话。')
@@ -196,9 +206,10 @@ class AgentManager:
             if not previous or (owner!='@panel' and (previous['owner']!=owner or previous['source_group']!=source)):
                 raise ValueError('无法继续这个任务。')
             if previous['workspace_id']!=ws.id:raise ValueError('续接任务必须使用原工作区。')
+            if previous['backend']!=backend:raise ValueError('续接任务必须使用原 Agent 引擎。')
             if previous.get('workspace_config')!=ws.model_dump():raise ValueError('工作区配置已变化，请新建任务。')
             session=previous['session_key']
-        if not self.store.create_job(identifier,ws.id,owner,source,prompt.strip(),session,ws.model_dump()):return self.store.job(identifier)
+        if not self.store.create_job(identifier,ws.id,owner,source,prompt.strip(),session,ws.model_dump(),backend):return self.store.job(identifier)
         if source_context is not None:
             self.store.save_job_context(identifier,source_context)
         (self.runtime/'AGENT_STOP').unlink(missing_ok=True)
@@ -233,9 +244,18 @@ class AgentManager:
                     if self.stopped(identifier,epoch):raise asyncio.CancelledError
                     self.running_count+=1;self.active_paths.add(str(root));counted=True
                 self.store.update_job(identifier,status='running')
-                self.store.agent_event(identifier,'started','Codex 正在处理任务')
+                job=self.store.job(identifier)
+                if job['backend']=='deepseek':
+                    current=self.workspace(workspace.id)
+                    if current!=workspace:raise ValueError('工作区权限已变化，请重新提交任务。')
+                    if job['source_group'] and not self.config.value.project_access(current,job['owner'],job['source_group']):
+                        raise ValueError('项目经理权限已撤销。')
+                self.store.agent_event(identifier,'started',('DeepSeek' if job['backend']=='deepseek' else 'Codex')+' 正在处理任务')
                 async with asyncio.timeout(self.config.value.agent.timeout_seconds):
-                    client=await self.execute(identifier,workspace,epoch)
+                    if job['backend']=='deepseek':
+                        from .deepseek_agent import execute
+                        client=await execute(self,identifier,workspace,epoch)
+                    else:client=await self.execute(identifier,workspace,epoch)
                 if self.stopped(identifier,epoch):raise asyncio.CancelledError
         except asyncio.CancelledError:
             self.store.update_job(identifier,status='cancelled',error='任务已取消，未自动回滚已完成的文件改动。')
@@ -416,7 +436,9 @@ class AgentManager:
         if self.on_cancel:await self.on_cancel(identifier)
         client=self.clients.get(identifier)
         if client and job.get('thread_id') and job.get('turn_id'):
-            try:await client.call('turn/interrupt',{'threadId':job['thread_id'],'turnId':job['turn_id']},timeout=3)
+            try:
+                if job['backend']=='deepseek':await client.notify('session/cancel',{'sessionId':job['thread_id']})
+                else:await client.call('turn/interrupt',{'threadId':job['thread_id'],'turnId':job['turn_id']},timeout=3)
             except Exception:pass
         task=self.tasks.get(identifier)
         if task and not task.done():

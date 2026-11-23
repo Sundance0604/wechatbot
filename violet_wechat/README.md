@@ -1,84 +1,96 @@
-# Violet：微信 AI 工作台
+# Violet · 微信 AI 工作台
 
-完整技术文档：**[只读监听、原生 Hook 发送与 Agent 权限](../docs/02-violet-bot-internals.md)**。
+Violet 在 Windows 本机独立运行，提供微信群聊/私聊 AI 对话、管理员微信命令，以及 Codex 或 DeepSeek Harness 工作区 Agent。接收使用只读聊天库，发送使用已验证微信模块的原生函数。
 
-Violet 在本机独立运行：DeepSeek API 负责普通聊天和自然语言微信命令解析，Codex App Server 负责显式管理员工作区任务。紫色控制面板只管理本机服务。接收通过只读聊天库，发送通过当前微信进程的原生函数；没有用键鼠模拟发送，也没有直接向消息数据库插入待发记录。
+完整技术文档：[只读监听、原生 Hook 发送与 Agent 权限](../docs/02-violet-bot-internals.md)。
 
-## 启动
+## Windows EXE（0.8.1）
 
-Windows、Python 3.11+。原生发送适配 `native/weixin_4_2_0_11.json` 与 `native/weixin_4_2_0_13.json` 所描述的 Windows 微信 4.2.0.11 / 4.2.0.13 二进制；完整 SHA-256 必须匹配，同版本号不同文件也会拒绝。
+在 [GitHub Releases](https://github.com/Sundance0604/wechatbot/releases/tag/violet-v0.8.1) 下载 Windows x64 压缩包，解压后双击 `Violet.exe`。无需安装 Python、Conda 或 Node.js。更新前先用“退出程序.cmd”退出旧版，再打开新版。
+
+新用户的机器人称呼为 `VioletBot`，默认人设、主人资料、微信账号、监听会话、管理员及工作区列表均为空。使用者需要登录自己的微信、填写自己的 DeepSeek API Key，再选择监听会话。连接本机微信后显示的账号来自使用者自己的登录会话。
+
+0.8.1 移除了开发者称呼及聊天人设等默认值；公开源码、配置样例与 EXE 均接受隐私扫描。既有本机设置继续保留，不随更新删除，也不会随 EXE 发送给其他人。发布时只分享 EXE/发布压缩包，不要分享本机数据目录。
+
+默认数据目录为 `%LOCALAPPDATA%/Violet`。关闭浏览器不会退出服务：面板“停止全部”停止监听与 Agent；发布包的“退出程序.cmd”关闭后台。重复启动同一数据目录会打开已运行的面板，所以更新时应先退出旧版。
+
+## 源码启动
+
+Windows，Python 3.11+，已登录兼容版本的电脑版微信：
 
 ```powershell
-copy config.example.json config.local.json
-.\setup.bat
-.\start.bat
+cd violet_wechat
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python run.py --open
 ```
 
-面板：<http://127.0.0.1:8766>。填写自己的 DeepSeek Key，连接微信并选择群，配置管理员，再点击开始监听。首次连接未创建原生管理器时，先在微信任意会话手动发一条普通文字，再重新连接发送。重复启动会打开已有面板；关闭浏览器不会停止后台。
-
-可安装为独立包，从其他目录运行：
+也可以双击 `setup.bat` 安装，再用 `start.bat` 启动。主配置为 `config.local.json`，空白模板见 `config.example.json`。源码目录已有该配置时保留原位置；否则使用默认数据目录。
 
 ```powershell
-python -m pip install .
-violet --open
-violet --data-dir D:/VioletData --open
-violet --data-dir D:/VioletData --stop
+python run.py --data-dir D:/VioletData --port 8767 --open
+python run.py --data-dir D:/VioletData --stop
+python run.py --data-dir D:/VioletData --quit
 ```
 
-默认安装数据目录为 `%LOCALAPPDATA%/Violet`；源码目录已有 `config.local.json` 时沿用源码目录。`VIOLET_HOME` 或 `--data-dir` 可以显式选择，当前启动目录不会自动获得 Agent 权限。
+## 配置与使用
 
-## 微信更新适配（0.7.1）
+1. 在“设置”填写自己的 API Key；保存后不会把已存密钥回传到浏览器。
+2. 连接微信，选择监听的群聊或联系人，按需填写机器人称呼及人设。
+3. 管理员按真实微信号或 wxid 核验，不按昵称升权。次级管理员仅可使用 `/command` 微信操作。
+4. 点击“开始监听”才会处理新增消息；程序不会自动开启全部私聊，也不回放加入监听前的历史。
 
-新增 4.2.0.13 指定 SHA-256 模块支持，保留 4.2.0.11。读取、临时文本对象构造与释放、文件传输助手实际发送及服务器编号回查已通过。版本配置分别记录函数、虚表、管理器结构；连接按模块内容选择，未知模块仍拒绝发送。进程缓存只提供本次对象与线程地址，不能覆盖受信任的函数偏移。
+普通聊天支持写作、解释、整理、翻译和联网查询；默认对话模型 `deepseek-flash`、联网模型 `deepseek-v4-pro`。各会话的上下文、已确认记忆及任务来源独立。“AI 对话”页不会向微信发信。
 
-## 联系人私聊监听（0.7.0）
+管理员可使用 `/command send ["示例联系人"] | 正文`、`/command forward 3 -> 示例联系人` 等命令，查看进度或取消自己的命令批次。权限与目标在执行前核验；同名目标不擅自选择。
 
-在“监听会话 → 添加监听会话”切换为“联系人私聊”，搜索并添加联系人，再应用设置。默认只处理保存后开始监听时的新消息；不会开启全部私聊，也不回放历史请求。已监听私聊与群聊各自保存游标、近期历史、人设和 Markdown。
+主人资料默认留空，由使用者自行维护。资料与会话记忆不能授予管理员权限或证明任务已经完成。
 
-私聊文字默认直接回应，不要求 @，不受群聊主动插话预算限制；自己的消息、媒体/系统消息仍跳过。安静/暂停期间普通私聊不回复，新 @ 可以单次呼叫；全局停止与会话关闭始终优先。公众号、系统会话和自己不作为联系人监听目标。
+## 项目 Agent
 
-联系人卡片可以选择普通联系人、次级管理员、管理员。身份仍按真实微信号核验，并在所有受监听会话中生效；修改时会同时移除该账号旧别名对应的授权。普通联系人添加监听后不会自动升权。私聊里的 `/command` 和 `/agent` 使用与群聊相同的后端权限；`/command forward` 只读取当前来源会话。
+普通聊天不需要安装 Agent。使用项目任务时另外安装对应程序：
 
-配置继续使用原来的 `groups` 字段与 `/api/groups/...` 路由以兼容旧版本；其中的条目现在可以是群或个人真实用户名，类型由是否以 `@chatroom` 结尾确定。无需迁移既有群配置。Agent 来源快照增加 `conversation_type`，默认会话协议更新为 `source-conversation-v2`。
+- `/agent 工作区标识 任务内容`：使用本机安装并登录的 Codex CLI/App Server。
+- `/deepseek 工作区标识 任务内容`：使用原生 DeepSeek Harness Agent，复用本机配置的 DeepSeek API Key。
 
-## 管理员等级
+在“工作区 → 全局 Agent 设置”填写程序路径、模型并启用。全局设置供全部工作区共用，新增项目无需重新填写程序路径。保存采用配置版本校验，旧页面无法覆盖较新的启用状态或程序路径；局部 Agent 设置只合并提交的字段。
 
-| 身份 | 普通聊天 | `/command` 微信操作 | `/agent`、本地工具、群记忆管理 |
-| --- | --- | --- | --- |
-| 普通群成员 | 是 | 否 | 否 |
-| 次级管理员 | 是 | 是 | 否 |
-| 管理员 | 是 | 是 | 按显式配置开放 |
+自行添加已存在的项目目录，设置读写、命令及联网权限，再绑定项目群。项目经理权限默认对该工作区绑定群的所有成员开放，也可改为指定成员。该权限只允许在绑定工作区内发起、查询和取消本人的项目任务，不授予全局管理员权限；新项目不会自动绑定任何真实群。
 
-面板分别配置微信号或实际 wxid，一行一个，保存时从本机联系人按实际账号核验，不能靠昵称、自称或群 Markdown 提升权限。次级管理员只能查询/取消自己在本来源群创建的批量任务。全局发信关闭、停止监听及来源群关闭对两种管理员都有效。
+DeepSeek 使用 Harness 原生沙箱。终端进程可能读取本机可见文件或访问网络，需要更强隔离时应使用独立系统账号或虚拟机。工作区 Markdown 不能扩大程序核验的权限。
 
-```text
-/command 给 ExampleContact 发消息，内容是：今晚八点见
-/command 把本群最近30条消息转给 ExampleContact
-/command send ["ExampleContact", "示例群（测试）"] | 周末见
-/command status 任务编号
-/command cancel 任务编号
-/agent 项目别名 分析这个项目的配置读取流程
-/agent-new 项目别名 创建一份独立任务
+## 微信版本
+
+发送只接受已适配的 Windows 微信 `4.2.0.11`、`4.2.0.13`、`4.2.0.52`、`4.2.0.53` 指定 SHA-256 模块。不能仅凭版本号或复制另一进程的内存地址保证兼容；未知模块会停止调用发送函数。
+
+4.2.0.53 的只读连接、发送管理器和工作线程定位、三个文字对象构造及完整释放已在本机验证。本次发布没有自动发送真实微信消息，也未在另一台实体电脑验收。
+
+微信重启后点击“重新连接发送”。若工作线程尚未出现，可以在微信手动发一条文字后重试。微信更新后需要重新验证模块指纹和原生适配。
+
+## 数据与停止
+
+配置、API Key、微信标识、聊天、主人资料、会话记忆、任务日志与本机原生运行配置均不在发布包中。使用后生成的数据属于该电脑使用者，应按敏感资料管理。
+
+普通聊天会把所选会话的近期文字、已确认记忆与主人资料发送给配置的模型服务。Agent 任务会携带其来源会话的快照，读写与工具执行取决于工作区授权。详见 [PRIVACY.md](../PRIVACY.md)。
+
+停止会取消尚未发送的回复和 Agent 任务；已经进入微信发送函数的单条消息无法撤回。不确定是否发送成功时不会自动重发，应查看发送记录再核对。服务重新启动默认保持停止。
+
+## 检查与构建
+
+```powershell
+python -m pip install pytest
+New-Item -ItemType Directory -Force .build | Out-Null
+python -m pytest tests -q -p no:cacheprovider --basetemp .build/test-run
+node --test tests/test_harness_policy.mjs
+python -m pip install -r packaging/build-requirements.txt
+./packaging/build.ps1 -Python python
+python packaging/audit.py dist/Violet.exe
+python packaging/smoke.py dist/Violet.exe --output .build/release-smoke --port 8878
+python packaging/release.py dist/Violet.exe --smoke-report .build/release-smoke/smoke.json
 ```
 
-固定 `/command` 格式直接解析；自然语言格式使用已配置的聊天模型提取有限字段，不能转入 Agent 或本地脚本。缺少收件人、正文或编号时要求完整重发。转发是带时间和发言人的逐条文字，不是微信原生合并转发卡片，也不传递图片/语音原件。一次最多20个目标、100条实际发送。
+`packaging/audit.py --deny-file` 可额外检查本机禁发词，禁发词文件放在仓库外且不可发布。审计扫描 EXE 的资源与 Python 字符串常量，仅输出问题类别和文件路径。
 
-## 群上下文与发言控制
+`Violet.exe --self-test` 只检查离线组件，不调用模型、不发信。`--no-open` 禁止自动打开浏览器。程序未作商业代码签名，Windows 可能显示未知发布者提示。
 
-每群有独立游标、聊天历史、长期 Markdown、称呼、人设、参与风格、主动发言预算和安静状态。家族群可选择温和预设，同学群可选择熟人接梗。主人公开资料是共享配置，不代表机器人就是账号持有人。
-
-明确 @ 或引用机器人优先回应；闭嘴类指令触发默认120秒安静，不发确认文字，新的 @ 可单次回应而不解除安静计时。全局停止及群关闭优先。普通闲聊先判定是否参与，再生成正文；不参与直接不发送。每条发送前重读最新消息，发现纠正、要求安静或上下文版本变化时取消旧回复。
-
-`/agent` 默认携带来源群最近50条文字、引用、群 Markdown 和人设，数量可调0–200；内容过多时保留最新部分。快照在任务详情可查看。工作区、操作者、来源群及群配置共同隔离默认 Codex 会话。
-
-## 发送可靠性
-
-待发文字先落本机 SQLite，再调用原生发送。成功后从只读微信库查到自身新消息和服务器编号才标记确认。发送不确定时保留记录并停止，不自动重发。它不是“恰好一次送达”的分布式协议；服务器编号也不等于对方已读。
-
-`stop.bat` 或面板“停止全部”会取消未提交队列、阻止新的原生调用并中断 Agent；已经进入微信内部发送函数的单条只能完成回查，不能靠停止按钮撤回。
-
-## 运行数据与测试
-
-没有附带真实配置、聊天、群记忆、主人资料、原生运行地址或模型密钥。详细数据流见 [PRIVACY.md](../PRIVACY.md)。普通聊天会把配置允许的群背景发给模型；本地读取库还会生成明文缓存与密钥缓存，应留在本机。
-
-从仓库根目录运行 `python -m pytest -q -p no:cacheprovider`。公开自动测试使用虚构数据及模拟发送/模型；不需要登录微信，不执行群发，也不验证新微信版本的原生兼容性。
+本项目遵循仓库的 GPL-3.0 许可证；第三方许可证随程序提供。

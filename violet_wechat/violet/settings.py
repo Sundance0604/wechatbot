@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Literal
 
@@ -11,9 +12,7 @@ HOME = (Path(os.environ['VIOLET_HOME']).expanduser().resolve() if os.environ.get
         Path(os.environ.get('LOCALAPPDATA',str(Path.home()/'.local/share')))/'Violet')
 RUNTIME = HOME/'runtime'
 CONFIG = HOME/'config.local.json'
-PERSONA = ('你是群里的GPT小姐，一个自然、有主见的AI聊天搭子。大家知道你是AI。'
-           '接住大家刚说的话，可以幽默、接梗，别用客服腔。不要冒充微信账号持有人，不编造亲身经历。'
-           '话少一点，不逐条讲评，不猜别人的心理，不反复自我介绍。明确向你提出的多个问题可以分别简短回答。')
+PERSONA = ''
 FAMILY_PERSONA = ('这是账号主人的家族群。亲切、自然、简洁，称呼依照本群明确提供的信息，不猜辈分或私人关系。'
                   '尊重长辈，不使用同学群互损、阴阳怪气或国/匪黑话；不替主人作私人承诺。')
 
@@ -69,6 +68,9 @@ class Workspace(Strict):
     allow_commands: bool = True
     allow_network: bool = False
     allow_send_messages: bool = True
+    project_groups: list[str] = Field(default_factory=list,max_length=30)
+    project_all_members: bool = True
+    project_members: list[str] = Field(default_factory=list,max_length=100)
 
 
 class AgentSettings(Strict):
@@ -77,6 +79,13 @@ class AgentSettings(Strict):
     model: str = Field(default='',max_length=100)
     timeout_seconds: int = Field(default=900,ge=30,le=7200)
     max_concurrency: int = Field(default=2,ge=1,le=4)
+    deepseek_enabled: bool = False
+    deepseek_path: str = Field(default='',max_length=800)
+    deepseek_model: str = Field(default='deepseek-flash',min_length=1,max_length=100)
+
+
+def merge_agent_settings(current,patch):
+    return {**current,**patch}
 
 
 class Settings(Strict):
@@ -90,8 +99,8 @@ class Settings(Strict):
     batch_messages: int = Field(default=30,ge=1,le=100)
     request_timeout: int = Field(default=90,ge=10,le=300)
     temperature: float = Field(default=0.8,ge=0,le=2)
-    bot_name: str = Field(default='GPT小姐',min_length=1,max_length=30)
-    mentions: list[str] = Field(default_factory=lambda:['VioletBot','GPT小姐'],max_length=10)
+    bot_name: str = Field(default='VioletBot',min_length=1,max_length=30)
+    mentions: list[str] = Field(default_factory=lambda:['VioletBot'],max_length=10)
     persona: str = Field(default=PERSONA,max_length=8000)
     admin_accounts: list[str] = Field(default_factory=list,max_length=30)
     secondary_admin_accounts: list[str] = Field(default_factory=list,max_length=30)
@@ -118,7 +127,17 @@ class Settings(Strict):
             if not path.is_absolute() or not path.is_dir():
                 raise ValueError('工作区必须选择已存在的绝对目录。')
             workspace.path = str(path.resolve())
+            if any(not group.endswith('@chatroom') or not any(g.id==group for g in self.groups) for group in workspace.project_groups):
+                raise ValueError('项目经理权限只能绑定已配置的群聊。')
+            if any(not member.startswith('wxid_') or not is_person_id(member) for member in workspace.project_members):
+                raise ValueError('指定项目成员请填写真实 wxid，不使用昵称。')
         return self
+
+    def project_access(self,workspace,owner,source):
+        group=next((g for g in self.groups if g.id==source and g.enabled and not g.is_private),None)
+        return bool(group and workspace.enabled and source in workspace.project_groups and owner
+                    and owner not in {'@panel',self.self_id} and is_person_id(owner)
+                    and (workspace.project_all_members or owner in workspace.project_members))
 
 
 class ConfigStore:
@@ -128,6 +147,10 @@ class ConfigStore:
         key = os.environ.get('VIOLET_DEEPSEEK_API_KEY')
         if key:
             self.value.api_key = SecretStr(key)
+        self.revision = uuid.uuid4().hex
+
+    def public(self):
+        return {**self.value.public(),'settings_revision':self.revision}
 
     def save(self,value):
         self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -137,6 +160,7 @@ class ConfigStore:
         temporary.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
         os.replace(temporary,self.path)
         self.value = value
+        self.revision = uuid.uuid4().hex
 
     def update(self,patch):
         patch = dict(patch)
@@ -144,6 +168,7 @@ class ConfigStore:
         data = self.value.model_dump()
         if patch.get('api_key') == '':
             patch.pop('api_key')
+        if isinstance(patch.get('agent'),dict):patch['agent']=merge_agent_settings(data['agent'],patch['agent'])
         data.update(patch)
         value = Settings.model_validate(data)
         value.validate_workspaces()

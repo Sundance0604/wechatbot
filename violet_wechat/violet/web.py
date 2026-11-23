@@ -12,7 +12,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .engine import Engine
 from .model import DeepSeek,DeepSeekError,Reply
-from .settings import ConfigStore,RUNTIME,ROOT,Settings,is_person_id
+from .settings import ConfigStore,RUNTIME,ROOT,Settings,is_person_id,merge_agent_settings
 from .store import Store
 from .agent import AgentManager
 from .memory import MemoryConflict
@@ -28,6 +28,7 @@ class AgentRequest(BaseModel):
     prompt: str = Field(min_length=1,max_length=20000)
     new_session: bool = False
     parent: str | None = None
+    backend: Literal['codex','deepseek'] = 'codex'
 
 
 class MemoryRequest(BaseModel):
@@ -100,7 +101,7 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
 
     @app.get('/api/settings')
     async def settings():
-        return config.value.public()
+        return config.public()
 
     @app.get('/api/profile')
     async def owner_profile():
@@ -126,10 +127,17 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
             return await persist_settings(patch)
 
     async def persist_settings(patch):
+        patch=dict(patch)
+        expected=patch.pop('settings_revision',None)
+        if expected is not None and expected!=config.revision:
+            raise HTTPException(409,'设置已在其他页面更新；本次未覆盖新配置。请刷新页面后重新修改并保存。')
+        if expected is None and all(name in patch for name in ['agent','groups','workspaces','model','persona']):
+            raise HTTPException(409,'这是旧页面提交的完整配置；为避免覆盖新设置，请先刷新控制面板再保存。')
         raw = config.value.model_dump()
         patch.pop('api_key_configured',None)
         if patch.get('api_key')=='':
             patch.pop('api_key')
+        if isinstance(patch.get('agent'),dict):patch['agent']=merge_agent_settings(raw['agent'],patch['agent'])
         raw.update(patch)
         try:
             candidate = Settings.model_validate(raw)
@@ -148,7 +156,7 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
                         raise HTTPException(400,'私聊监听必须选择真实的其他联系人。')
         resume = engine.running
         revision = engine.command_revision
-        if (candidate.workspaces,candidate.agent,candidate.admin_accounts)!=(config.value.workspaces,config.value.agent,config.value.admin_accounts):
+        if (candidate.workspaces,candidate.agent,candidate.admin_accounts,candidate.groups,candidate.api_key)!=(config.value.workspaces,config.value.agent,config.value.admin_accounts,config.value.groups,config.value.api_key):
             await agents.cancel_all('工作区或权限设置已更改')
         await engine.stop(user_requested=False)
         account_changed = (candidate.wechat_account,candidate.wechat_data_dir,candidate.self_id)!=(config.value.wechat_account,config.value.wechat_data_dir,config.value.self_id)
@@ -158,7 +166,7 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
         store.event('settings','设置已保存'+('并应用到监听' if resume else ''))
         if resume and revision==engine.command_revision:
             await engine.start(user_requested=False)
-        return candidate.public()
+        return config.public()
 
     @app.get('/api/status')
     async def status():
@@ -183,6 +191,10 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
             result = await recover(runtime)
         except RuntimeError as exc:
             raise HTTPException(400,str(exc)) from None
+        if engine.phase=='error' and engine.error and ('当前微信版本尚未适配' in engine.error or '微信已经重启' in engine.error):
+            engine.error=None
+            engine.phase='idle'
+            engine.activity='微信发送连接已恢复，监听未启动'
         if resume and revision==engine.command_revision:
             await engine.start(user_requested=False)
         return result
@@ -243,8 +255,10 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
         if not isinstance(body.get('enabled'),bool):
             raise HTTPException(400,'请提供明确的开启或关闭状态。')
         async with settings_lock:
+            if body.get('settings_revision') is not None and body['settings_revision']!=config.revision:
+                raise HTTPException(409,'设置已在其他页面更新，请刷新后再修改监听开关。')
             await engine.enable_group(identifier,body['enabled'])
-        return {'settings':config.value.public(),'status':engine.status()}
+        return {'settings':config.public(),'status':engine.status()}
 
     @app.post('/api/groups/{identifier}/quiet')
     async def quiet_group(identifier:str,request:Request):
@@ -305,7 +319,7 @@ def create_app(config_path=None,runtime=None,bridge_factory=None):
 
     @app.post('/api/agent/jobs')
     async def create_job(payload:AgentRequest):
-        return await agents.submit(payload.workspace,payload.prompt,new_session=payload.new_session,parent=payload.parent)
+        return await agents.submit(payload.workspace,payload.prompt,new_session=payload.new_session,parent=payload.parent,backend=payload.backend)
 
     @app.get('/api/agent/jobs/{identifier}')
     async def job_detail(identifier:str):

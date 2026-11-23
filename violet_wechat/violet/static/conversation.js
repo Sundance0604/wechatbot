@@ -13,7 +13,7 @@ function conversationControls(g,index){
  ${setting('窗口内最多主动发言 / 字','character_budget',g.character_budget??600,50,10000)}
  ${setting('要求安静后保持 / 秒','quiet_seconds',g.quiet_seconds??120,10,3600)}
  ${setting('普通接梗最多 / 字','casual_max_chars',g.casual_max_chars??80,10,300)}</div>
- ${field('其他群友的常用称呼 / 简称',`<textarea rows="2" data-group="${index}" data-property="other_names" placeholder="一行一个，例如 friend_a、friend_b、friend_c">${e((g.other_names||[]).join('\n'))}</textarea>`,'点名这些称呼时默认不抢答。无需提供真实姓名，也不用于核验管理员。')}</details>`;
+ ${field('其他群友的常用称呼 / 简称',`<textarea rows="2" data-group="${index}" data-property="other_names" placeholder="一行一个，例如 lrs、dzc、lsw">${e((g.other_names||[]).join('\n'))}</textarea>`,'点名这些称呼时默认不抢答。无需提供真实姓名，也不用于核验管理员。')}</details>`;
 }
 function handleConversationAction(name,arg){
  if(!['quiet-group','wake-group'].includes(name))return false;

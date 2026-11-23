@@ -147,10 +147,10 @@ def test_mixed_batch_excludes_quiet_message_but_answers_actual_question(tmp_path
             assert schema is Participation
             return Participation(participate=True,message_ids=[m['message_id'] for m in payload['new_messages']],kind='answer',reason='addressed')
         async def respond(self,system,payload,*args,**kwargs):
-            assert [m['text'] for m in payload['new_messages']]==['@GPT小姐 你好']
+            assert [m['text'] for m in payload['new_messages']]==['@VioletBot 你好']
             return Reply(should_reply=True,replies=['你好'])
     engine.provider=Provider()
-    result=asyncio.run(engine.generate(engine.config.value.groups[0],[msg(text='这句别接'),msg(2,'@GPT小姐 你好')]))
+    result=asyncio.run(engine.generate(engine.config.value.groups[0],[msg(text='这句别接'),msg(2,'@VioletBot 你好')]))
     assert result==['你好']
     store.close()
 

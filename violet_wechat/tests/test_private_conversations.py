@@ -35,7 +35,7 @@ def private_engine(tmp_path):
     store=Store(tmp_path/'state.db');engine=Engine(config,store,tmp_path)
     for group in config.value.groups:store.seed(group.id,{})
     class LocalBridge:
-        self_id='bot';names={'bot':'GPT小姐',PERSON:'测试联系人'}
+        self_id='bot';names={'bot':'VioletBot',PERSON:'测试联系人'}
         def snapshot(self,identifier,cursors,limit):return [],engine.context.get(identifier,[])
         def positions(self,identifier):return {}
         def resolve(self,identifier,admin=False):return {'username':identifier}
@@ -78,7 +78,7 @@ def test_private_quiet_pause_self_media_and_stop_are_respected(private_engine):
     assert asyncio.run(engine.generate(person,[message(text='闭嘴')]))==[]
     assert asyncio.run(engine.generate(person,[message(2,'普通新消息')]))==[]
     assert not engine.provider.payloads
-    assert asyncio.run(engine.generate(person,[message(3,'@GPT小姐 继续这个问题')]))==['私聊答复']
+    assert asyncio.run(engine.generate(person,[message(3,'@VioletBot 继续这个问题')]))==['私聊答复']
     assert store.policy(PERSON)['quiet_until']>time.time()
     engine.policy.wake(person);store.pause(PERSON,True)
     assert asyncio.run(engine.generate(person,[message(4,'暂停时不应自动回复')]))==[]

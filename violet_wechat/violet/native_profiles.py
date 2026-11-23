@@ -20,8 +20,10 @@ def _file_prefix(data, rva):
 def load_module_profile(module_path):
     data = Path(module_path).read_bytes()
     digest = hashlib.sha256(data).hexdigest()
+    versions=[]
     for path in sorted(BASE.glob('weixin_*.json')):
         profile = json.loads(path.read_text(encoding='utf-8'))
+        if profile.get('version'):versions.append(profile['version'])
         if profile.get('module_sha256')!=digest:
             continue
         # Preserve the original authenticated build's layout and sized-delete thunk.
@@ -37,7 +39,8 @@ def load_module_profile(module_path):
             if _file_prefix(data,int(rva,16))!=profile['prefixes'][name]:
                 raise RuntimeError('原生函数校验失败：'+name)
         return profile
-    raise RuntimeError('当前微信版本尚未适配；已停止，未调用发送函数。当前仅验证4.2.0.11和4.2.0.13的指定模块。')
+    supported='、'.join(dict.fromkeys(versions)) or '无可用版本'
+    raise RuntimeError('当前微信版本尚未适配；已停止，未调用发送函数。当前仅验证'+supported+'的指定模块。')
 
 
 def bind_runtime_profile(cached):

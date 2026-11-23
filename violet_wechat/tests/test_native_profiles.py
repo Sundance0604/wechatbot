@@ -69,3 +69,29 @@ def test_prefix_must_fit_wholly_in_file_section(binary_profile):
     module,_,_=binary_profile
     with pytest.raises(RuntimeError,match='文件映射'):
         native_profiles._file_prefix(module.read_bytes(),0x11fc)
+
+
+def test_unknown_build_error_lists_installed_profile_versions(binary_profile):
+    module,template,profile=binary_profile
+    profile['version']='4.2.0.52'
+    template.write_text(json.dumps(profile),encoding='utf-8')
+    module.write_bytes(module.read_bytes()+b'unknown build')
+    with pytest.raises(RuntimeError,match='4.2.0.52'):
+        native_profiles.load_module_profile(module)
+
+
+def test_successful_native_recovery_clears_version_error_without_starting_monitor(tmp_path,monkeypatch):
+    from fastapi.testclient import TestClient
+    from violet.web import create_app
+    import violet.recovery as recovery
+    async def recover(runtime):return {'connected':True,'version':'4.2.0.52'}
+    monkeypatch.setattr(recovery,'recover',recover)
+    app=create_app(tmp_path/'config.json',tmp_path/'runtime')
+    with TestClient(app) as client:
+        engine=app.state.engine
+        engine.phase='error';engine.error='当前微信版本尚未适配；已停止，未调用发送函数。'
+        headers={'x-violet-local':client.get('/api/session').json()['token']}
+        result=client.post('/api/native/recover',headers=headers)
+        assert result.status_code==200 and result.json()['version']=='4.2.0.52'
+        status=client.get('/api/status').json()
+        assert status['phase']=='idle' and status['error'] is None and not status['running']
